@@ -14,3 +14,11 @@ The two modules communicate with each other via Bluetooth, ensuring that data ex
 ## Example setup
 
 A CCM box sits somewhere in a room and is connected to a power supply. A feeder unit is placed on the ground, and plugged into a wall outlet before being paired with the CCM.
+
+## Dimensions
+
+The CCM closely resembles the Mac Studio box, with a sleek and modern design that also has openings that keeps airflow continuous. 
+
+Height: 5.0cm
+Width: 12.7cm(both ways)
+Weight: Unknown(no prototypes printed yet)
