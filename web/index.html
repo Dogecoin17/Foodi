@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Foodi</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header><h1>Foodi</h1><span id="conn" class="pill">connecting…</span></header>
+  <main>
+    <section class="card">
+      <h2>Feeder</h2>
+      <div class="stats">
+        <div><b id="weight">–</b><small>bowl (g)</small></div>
+        <div><b id="level">–</b><small>hopper (%)</small></div>
+        <div><b id="fstate">–</b><small>state</small></div>
+      </div>
+      <div class="row">
+        <input id="grams" type="number" min="1" max="200" value="30"> g
+        <button id="feed">Feed now</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Schedule</h2>
+      <ul id="schedule"></ul>
+      <div class="row">
+        <input id="time" type="time" value="08:00">
+        <input id="sgrams" type="number" min="1" max="200" value="40"> g
+        <button id="add">Add meal</button>
+      </div>
+    </section>
+
+    <section class="card"><h2>Insights</h2><div id="insights">No observations yet.</div></section>
+    <section class="card"><h2>Feeding history</h2><ul id="events"></ul></section>
+    <section class="card"><h2>Alerts</h2><ul id="alerts"></ul></section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

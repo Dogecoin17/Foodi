@@ -1,0 +1,11 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "CCM: run backend (simulator)", "type": "shell",
+      "command": "python -m uvicorn app.main:app --reload",
+      "options": { "cwd": "${workspaceFolder}/ccm" }, "isBackground": true,
+      "problemMatcher": [], "group": "build" },
+    { "label": "CCM: run tests", "type": "shell", "command": "python -m pytest",
+      "options": { "cwd": "${workspaceFolder}/ccm" }, "group": "test" }
+  ]
+}
