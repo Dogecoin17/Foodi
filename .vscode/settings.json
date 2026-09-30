@@ -4,5 +4,15 @@
   "python.analysis.extraPaths": ["ccm"],
   "editor.formatOnSave": true,
   "[python]": { "editor.defaultFormatter": "charliermarsh.ruff" },
-  "files.exclude": { "**/__pycache__": true, "**/.pytest_cache": true }
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true
+  },
+  "python-envs.pythonProjects": [
+    {
+      "path": ".",
+      "envManager": "ms-python.python:venv",
+      "packageManager": "ms-python.python:pip"
+    }
+  ]
 }

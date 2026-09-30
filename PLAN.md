@@ -1,7 +1,56 @@
 # Foodi – Digital System Build Plan
 
-Scope: everything digital – feeder firmware, CCM software (Arduino UNO Q), AI, web app and the links between them.
+This plan is the canonical delivery roadmap for the Foodi project described in [README.md](README.md). It defines the milestones, interfaces, and proof points for the digital system: feeder firmware, CCM software, AI, web app, and the links between them.
+
 Tick boxes as you go; every phase ends with a **Definition of Done (DoD)** you can demo.
+
+## Project summary
+Foodi is an automated pet-feeding ecosystem designed to improve eating habits and overall well-being. It combines AI, smart hardware, and a simple owner workflow to provide consistent and personalized feeding.
+
+The system has two main components:
+- **Central Computing Module (CCM):** the hub for scheduling, analytics, and owner-facing controls. It runs the FastAPI backend and simulator and is the home for the AI-driven feeding logic.
+- **Feeder:** the autonomous dispensing unit mounted on a feeder. It executes the schedule, tracks bowl weight/food level, and streams camera data when connected.
+
+The system is intentionally designed around a simulator-first workflow so development can continue without physical hardware. The repository contains the FastAPI backend, a fake feeder simulator, starter firmware, and the web app shell.
+
+## Quickstart and current scaffold state
+The following setup notes are the baseline for the plan and should be treated as the minimum working path for contributors.
+
+### Open in VS Code
+```bash
+code foodi.code-workspace
+```
+Accept the recommended extension prompt for Python, Ruff, PlatformIO, and C/C++.
+
+### Run the backend with the simulated feeder
+```bash
+cd ccm
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload
+```
+Open http://localhost:8000, then press **Feed now**, edit the schedule, and watch live updates.
+
+### Tests
+```bash
+cd ccm && python -m pytest
+```
+
+### Real hardware
+```bash
+FOODI_FEEDER=ble FOODI_BLE_ADDRESS=<feeder MAC> python -m uvicorn app.main:app
+```
+The BLE client and firmware are still skeletons; the real hardware path is a later milestone.
+
+### Current scaffold status
+| Part | State |
+|---|---|
+| BLE protocol encode/decode + tests | working, unit-tested |
+| Analytics (clamps, anomaly detection) + tests | working, unit-tested |
+| FakeFeeder simulator | working (ack, dispense, telemetry, idempotent retry, limits) |
+| FastAPI app + web dashboard | written, **not yet run** – first thing to try |
+| BleFeeder, feeder firmware, vision, bridge | skeletons / TODO |
 
 ## Guiding principles
 1. **Simulator first.** The CCM runs against a `FakeFeeder`, so software progress never waits for hardware.
