@@ -4,3 +4,6 @@ __pycache__/
 *.db
 .pio/
 node_modules/
+ai/.venv/
+*.onnx
+*.mp4
