@@ -7,3 +7,4 @@ node_modules/
 ai/.venv/
 *.onnx
 *.mp4
+ai/results/
