@@ -135,8 +135,8 @@ text(s, Inches(6.9), Inches(1.8), Inches(5.8), Inches(5), [
     "- Feeder -> CCM (Wi-Fi): camera stream",
     "- CCM -> owner (Wi-Fi, web app): dashboard, live view, insights",
     "",
-    "Pairing: owner joins the CCM to the home Wi-Fi, pairs the feeder over",
-    "Bluetooth, and the feeder joins Wi-Fi for smooth video.",
+    "Setup: owner joins the CCM to the home Wi-Fi once via Arduino App Lab,",
+    "pairs the feeder over Bluetooth, and the feeder joins Wi-Fi for video.",
 ], size=18)
 
 # 4 - firmware ------------------------------------------------------------------

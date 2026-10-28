@@ -37,6 +37,8 @@ class State:
     feeder: FeederLink | None = None
     hub = Hub()
     latest: dict = {"weight_g": 0, "food_level_pct": None, "state": "IDLE", "ts": None}
+    system: dict = {"temp_c": None, "fan_on": None}  # CCM hardware, via the MCU bridge
+    mcu: NullMcuBridge | None = None
     pending_manual: set[int] = set()
     next_cmd_id: int = int(time.time()) & 0x3FFFFFFF
     low_food_alerted: bool = False

@@ -3,6 +3,18 @@
 Rehearse twice. Everything runs on the laptop (or the UNO Q); no internet needed.
 
 ## Setup before the judges arrive
+
+### On the UNO Q (the real CCM)
+1. Plug the UNO Q into a laptop via USB-C and open Arduino App Lab.
+2. Follow first-time setup: set the Linux password, then enter the local Wi-Fi
+   credentials when App Lab asks (Settings -> Advanced Network Configuration also
+   works in SBC mode). From now on the board is reachable as `http://<uno-q-ip>`.
+3. Copy the repo to the board (git clone or scp), then on the board:
+   `cd ccm && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
+4. Seed and start: `.venv/bin/python -m app.seed_demo --force` then
+   `.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0`
+
+### On a laptop (fallback, same flow)
 1. Fresh demo DB with history: `cd ccm && python -m app.seed_demo --force`
 2. Start the backend: `python -m uvicorn app.main:app`
 3. Open http://localhost:8000, confirm: video clip plays, dashboard shows "feeder connected".

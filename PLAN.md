@@ -45,6 +45,14 @@ FOODI_FEEDER=ble FOODI_BLE_ADDRESS=<feeder MAC> python -m uvicorn app.main:app
 ```
 The BLE client and firmware are complete and compile, but have not been validated on hardware yet.
 
+### CCM networking (UNO Q)
+Wi-Fi onboarding is done once with Arduino App Lab over USB-C (first-time setup asks
+for the local Wi-Fi credentials; SBC mode: Settings -> Advanced Network Configuration).
+After that the CCM is reachable at `http://<uno-q-ip>` and App Lab connects in Network
+mode. No product code is involved; a hotspot-based onboarding flow is a future
+enhancement, as is pushing Wi-Fi credentials to the feeder (needs a `SET_WIFI` command
+added to `docs/ble-protocol.md`).
+
 ### Current scaffold status
 | Part | State |
 |---|---|
