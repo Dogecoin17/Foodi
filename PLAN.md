@@ -28,9 +28,11 @@ cd ccm
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+python -m app.seed_demo            # optional: 30 days of history incl. an anomaly
 python -m uvicorn app.main:app --reload
 ```
 Open http://localhost:8000, then press **Feed now**, edit the schedule, and watch live updates.
+The dashboard shows the pre-recorded detection clip (override with `FOODI_VIDEO=<path>`).
 
 ### Tests
 ```bash
@@ -41,7 +43,7 @@ cd ccm && python -m pytest
 ```bash
 FOODI_FEEDER=ble FOODI_BLE_ADDRESS=<feeder MAC> python -m uvicorn app.main:app
 ```
-The BLE client and firmware are still skeletons; the real hardware path is a later milestone.
+The BLE client and firmware are complete and compile, but have not been validated on hardware yet.
 
 ### Current scaffold status
 | Part | State |
@@ -49,8 +51,11 @@ The BLE client and firmware are still skeletons; the real hardware path is a lat
 | BLE protocol encode/decode + tests | working, unit-tested |
 | Analytics (clamps, anomaly detection) + tests | working, unit-tested |
 | FakeFeeder simulator | working (ack, dispense, telemetry, idempotent retry, limits) |
-| FastAPI app + web dashboard | written, **not yet run** – first thing to try |
-| BleFeeder, feeder firmware, vision, bridge | skeletons / TODO |
+| FastAPI app + web dashboard | working (19 tests pass); video serves the pre-recorded clip `ai/results/cica1_roi.mp4` |
+| Feeder firmware | complete per BLE spec v1, **compiles** (PlatformIO, 23% flash), untested on hardware |
+| BleFeeder client | reconnect with backoff, SYNC_TIME + SET_SCHEDULE on every connect; untested on hardware |
+| Demo seed | `python -m app.seed_demo` fills 30 days incl. a 2-day intake drop that triggers an insight |
+| vision, bridge | vision has detection benchmarks on recorded clips; bridge is a skeleton |
 
 ## Guiding principles
 1. **Simulator first.** The CCM runs against a `FakeFeeder`, so software progress never waits for hardware.

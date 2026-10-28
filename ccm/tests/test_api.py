@@ -44,6 +44,23 @@ def test_pets():
         assert c.get("/api/pets").json()[0]["name"] == "Milo"
 
 
-def test_video_not_ready():
+def test_video_not_ready(tmp_path, monkeypatch):
+    import app.main as m
+
+    monkeypatch.setattr(m, "VIDEO_PATH", tmp_path / "missing.mp4")
     with TestClient(app) as c:
-        assert c.get("/api/video").status_code == 501
+        assert c.get("/api/video").status_code == 404
+
+
+def test_video_serves_clip():
+    with TestClient(app) as c:
+        r = c.get("/api/video")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "video/mp4"
+
+
+def test_daily_history():
+    with TestClient(app) as c:
+        r = c.get("/api/history/daily?days=7")
+        assert r.status_code == 200
+        assert all(set(d) == {"date", "grams"} for d in r.json())

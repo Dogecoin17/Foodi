@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -191,9 +193,29 @@ def insights():
     return {"anomalies": detect_anomalies(db.daily_dispensed())}
 
 
+@app.get("/api/history/daily")
+def history_daily(days: int = 30):
+    days = max(1, min(days, 90))
+    return [{"date": d, "grams": g} for d, g in db.daily_history(days)]
+
+
+VIDEO_PATH = Path(
+    os.getenv(
+        "FOODI_VIDEO",
+        Path(__file__).resolve().parents[2] / "ai" / "results" / "cica1_roi.mp4",
+    )
+)
+
+
 @app.get("/api/video")
 def video():
-    raise HTTPException(501, "Video pipeline arrives in Phase 5")
+    """Pre-recorded clip of a detected pet at the bowl (offline demo path).
+
+    Phase 5 replaces this with the live MJPEG stream relayed from the feeder.
+    """
+    if not VIDEO_PATH.is_file():
+        raise HTTPException(404, "No video clip configured (set FOODI_VIDEO)")
+    return FileResponse(VIDEO_PATH, media_type="video/mp4")
 
 
 @app.websocket("/ws")

@@ -77,12 +77,17 @@ def add_reading(weight_g: int, food_level_pct: int) -> None:
 def daily_dispensed(days: int = 30) -> list[float]:
     """Grams dispensed per day, oldest first.
     TODO (Phase 7): switch to *consumed* grams once bowl-weight meal tracking exists."""
+    return [g for _, g in daily_history(days)]
+
+
+def daily_history(days: int = 30) -> list[tuple[str, float]]:
+    """(date, grams) pairs per day, oldest first."""
     data = rows(
         "SELECT date(ts,'unixepoch','localtime') d, SUM(actual_g) g FROM feed_events "
         "GROUP BY d ORDER BY d DESC LIMIT ?",
         (days,),
     )
-    return [float(r["g"] or 0) for r in reversed(data)]
+    return [(r["d"], float(r["g"] or 0)) for r in reversed(data)]
 
 
 def today_dispensed() -> int:

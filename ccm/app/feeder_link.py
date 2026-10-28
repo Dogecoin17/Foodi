@@ -5,7 +5,7 @@ import asyncio
 import random
 import time
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Awaitable, Callable
 
 from . import protocol as P
@@ -136,10 +136,7 @@ class FakeFeeder(FeederLink):
 
 
 class BleFeeder(FeederLink):
-    """Real feeder over BLE. UNTESTED SKELETON – finish in Phase 3 once firmware exists.
-
-    TODO: reconnect with backoff, ACK timeout + retry (same cmd_id), SYNC_TIME + SET_SCHEDULE on connect.
-    """
+    """Real feeder over BLE: reconnect with backoff; SYNC_TIME + SET_SCHEDULE on every connect."""
 
     SERVICE = "f00d0000-0000-4000-8000-00805f9b34fb"
     COMMAND = "f00d0001-0000-4000-8000-00805f9b34fb"
@@ -152,29 +149,59 @@ class BleFeeder(FeederLink):
         self._client = None
         self._seq = 0
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._task: asyncio.Task | None = None
+        self._schedule: list[tuple[int, int, int]] = []
+        self._stopped = True
 
     def _next_seq(self) -> int:
         self._seq = (self._seq + 1) & 0xFFFF
         return self._seq
 
     async def start(self) -> None:
+        self._stopped = False
+        self._loop = asyncio.get_running_loop()
+        self._task = asyncio.create_task(self._run())
+
+    async def _run(self) -> None:
+        """Connect once, then keep reconnecting with backoff (spec: sync on every reconnect)."""
         from bleak import BleakClient  # imported lazily so the simulator needs no BLE stack
 
-        self._loop = asyncio.get_running_loop()
-        self._client = BleakClient(self.address, disconnected_callback=self._on_disconnect)
-        await self._client.connect()
-        await self._client.start_notify(self.EVENT, self._on_notify)
-        await self._client.start_notify(self.TELEMETRY, self._on_notify)
-        self.connected = True
-        await self._write(P.encode_sync_time(self._next_seq(), int(time.time()), 0))  # TODO: real tz offset
+        backoff = 1.0
+        while True:
+            try:
+                self._client = BleakClient(self.address, disconnected_callback=self._on_disconnect)
+                await self._client.connect()
+                await self._client.start_notify(self.EVENT, self._on_notify)
+                await self._client.start_notify(self.TELEMETRY, self._on_notify)
+                self.connected = True
+                backoff = 1.0
+                tz_min = int((datetime.now().astimezone().utcoffset() or timedelta()).total_seconds() // 60)
+                await self._write(P.encode_sync_time(self._next_seq(), int(time.time()), tz_min))
+                if self._schedule:
+                    await self._write(P.encode_set_schedule(self._next_seq(), self._schedule))
+                return  # reconnects re-run _run() via _on_disconnect
+            except Exception:
+                self.connected = False
+                if self._stopped:
+                    return
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 30.0)
 
     async def stop(self) -> None:
+        self._stopped = True
+        if self._task:
+            self._task.cancel()
         if self._client:
-            await self._client.disconnect()
+            try:
+                await self._client.disconnect()
+            except Exception:
+                pass
         self.connected = False
 
     def _on_disconnect(self, _client) -> None:
-        self.connected = False  # TODO: schedule reconnect
+        self.connected = False
+        if self._loop and not self._stopped:
+            self._task = asyncio.run_coroutine_threadsafe(self._run(), self._loop)
 
     def _on_notify(self, _char, data: bytearray) -> None:
         try:
@@ -191,7 +218,9 @@ class BleFeeder(FeederLink):
         await self._write(P.encode_dispense(self._next_seq(), cmd_id, grams))
 
     async def set_schedule(self, entries: list[tuple[int, int, int]]) -> None:
-        await self._write(P.encode_set_schedule(self._next_seq(), entries))
+        self._schedule = list(entries)
+        if self.connected:
+            await self._write(P.encode_set_schedule(self._next_seq(), entries))
 
     async def tare(self) -> None:
         await self._write(P.encode_tare(self._next_seq()))

@@ -48,6 +48,34 @@ async function refresh() {
     (a) => `${new Date(a.ts * 1000).toLocaleString()} – ${a.message}`);
   const ins = await api("/api/insights");
   $("insights").textContent = ins.anomalies.length ? ins.anomalies.map((a) => a.message).join(" ") : "No observations yet.";
+  drawChart(await api("/api/history/daily?days=30"));
+}
+
+function drawChart(days) {
+  const cv = $("chart");
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = 120;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const ctx = cv.getContext("2d");
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+  if (!days.length) return;
+  const max = Math.max(...days.map((d) => d.grams), 1);
+  const style = getComputedStyle(document.documentElement);
+  const accent = style.getPropertyValue("--accent").trim() || "#e8743b";
+  const muted = style.getPropertyValue("--muted").trim() || "#6b7280";
+  const bw = w / days.length;
+  days.forEach((d, i) => {
+    const bh = (d.grams / max) * (h - 18);
+    const low = d.grams < 0.7 * (days.reduce((s, x) => s + x.grams, 0) / days.length);
+    ctx.fillStyle = low ? "#c0392b" : accent;
+    ctx.fillRect(i * bw + 1, h - bh, bw - 2, bh);
+  });
+  ctx.fillStyle = muted;
+  ctx.font = "10px system-ui";
+  ctx.fillText(days[0].date.slice(5), 2, h - 2);
+  const last = days[days.length - 1].date.slice(5);
+  ctx.fillText(last, w - ctx.measureText(last).width - 2, h - 2);
 }
 
 $("feed").onclick = async () => {
@@ -73,3 +101,8 @@ function connectWs() {
 
 refresh().catch(console.error);
 connectWs();
+
+// Hide the live-view card if no clip is available (404).
+$("video").addEventListener("error", () => {
+  $("video").closest(".card").style.display = "none";
+});
