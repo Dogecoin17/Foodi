@@ -27,3 +27,10 @@ The CCM is designed with a sleek appearance inspired by the Mac Studio. Ventilat
 - **Width:** 12.7 cm
 - **Depth:** 12.7 cm
 - **Weight:** To be determined after the first prototype is printed
+
+## CCM hardware
+
+- **Arduino UNO Q** – Linux side runs the backend/AI; the STM32 MCU (`ccm/mcu/foodi_ccm_mcu`) handles real-time I/O over the Arduino Bridge (RPC)
+- **Power** – 3× 18650 cells with an HX-3S-01 3S BMS (protection only, no data lines), wall-socket input, main switch and power LED wired directly
+- **Cooling** – BMP280 case-temperature sensor; the MCU drives 2× 40 mm fans autonomously (on ≥ 50 °C, off ≤ 45 °C, fail-safe full-on if the sensor fails)
+- **Status LEDs** – power (wired), ON (MCU at boot), feeder-link and Wi-Fi-link (driven from Linux via the Bridge; both blink if the backend dies)

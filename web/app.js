@@ -8,12 +8,17 @@ const api = async (path, opts) => {
 
 let schedule = [];
 
+function renderTemp(t) {
+  $("temp").textContent = t != null ? Math.round(t) : "–";
+}
+
 function renderStatus(s) {
   $("conn").textContent = s.connected ? "feeder connected" : "feeder offline";
   $("conn").className = "pill " + (s.connected ? "ok" : "bad");
   $("weight").textContent = s.weight_g ?? "–";
   $("level").textContent = s.food_level_pct ?? "–";
   $("fstate").textContent = (s.state || "–").toLowerCase().replace("_", " ");
+  if ("temp_c" in s) renderTemp(s.temp_c);
 }
 
 function renderSchedule() {
@@ -94,6 +99,7 @@ function connectWs() {
   ws.onmessage = (ev) => {
     const d = JSON.parse(ev.data);
     if (d.type === "telemetry") renderStatus({ connected: true, ...d });
+    else if (d.type === "system") renderTemp(d.temp_c);
     else refresh();
   };
   ws.onclose = () => setTimeout(connectWs, 2000);

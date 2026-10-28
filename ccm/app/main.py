@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from contextlib import asynccontextmanager
@@ -17,6 +18,35 @@ from . import protocol as P
 from .analytics import clamp_portion, daily_limit_ok, detect_anomalies
 from .config import settings
 from .feeder_link import FeederLink, make_feeder
+from .mcu_bridge import NullMcuBridge, make_mcu_bridge
+
+
+def _on_local_network() -> bool:
+    """True when the CCM has a non-loopback IPv4 (drives the Wi-Fi status LED)."""
+    import socket
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("192.0.2.1", 80))  # no traffic is actually sent
+            return not s.getsockname()[0].startswith("127.")
+    except OSError:
+        return False
+
+
+async def _mcu_task() -> None:
+    """Feed the MCU watchdog/status LEDs and poll temperature (NullMcuBridge = no-op)."""
+    tick = 0
+    while True:
+        await asyncio.sleep(2)
+        tick += 1
+        feeder_ok = bool(state.feeder and state.feeder.connected)
+        await state.mcu.set_conn_leds(feeder_ok, _on_local_network())
+        if tick % 3 == 0:
+            temp = await state.mcu.temperature()
+            fan = await state.mcu.fan_on()
+            if temp is not None or fan is not None:
+                state.system = {"temp_c": temp, "fan_on": fan}
+                await state.hub.broadcast({"type": "system", **state.system})
 
 
 class Hub:
@@ -109,11 +139,14 @@ def _schedule_tuples() -> list[tuple[int, int, int]]:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init()
+    state.mcu = make_mcu_bridge(settings.mcu_mode)
     state.feeder = make_feeder(settings.feeder_mode, settings.ble_address)
     state.feeder.subscribe(on_feeder_message)
     await state.feeder.start()
     await state.feeder.set_schedule(_schedule_tuples())
+    mcu_task = asyncio.create_task(_mcu_task())
     yield
+    mcu_task.cancel()
     await state.feeder.stop()
 
 
@@ -130,6 +163,7 @@ def status():
     return {
         "connected": bool(state.feeder and state.feeder.connected),
         "mode": settings.feeder_mode,
+        **state.system,
         **state.latest,
     }
 
