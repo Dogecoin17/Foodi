@@ -5,6 +5,7 @@ Foodi is an automated pet-feeding ecosystem designed to help improve the eating 
 Whether a pet has a gastric condition, needs help managing its weight, or simply requires scheduled meals while its owner is away, Foodi is designed to make feeding more consistent and convenient.
 
 Read **PLAN.md** first – it is the build plan with phases, checklists, and definitions of done.
+To operate the system end-to-end (demo, phone camera, scale reading, presentation), see **[docs/OPERATING.md](docs/OPERATING.md)**.
 
 ## How it works
 
