@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -19,6 +19,7 @@ from .analytics import clamp_portion, daily_limit_ok, detect_anomalies
 from .config import settings
 from .feeder_link import FeederLink, make_feeder
 from .mcu_bridge import NullMcuBridge, make_mcu_bridge
+from .video import VideoPipeline
 
 
 def _on_local_network() -> bool:
@@ -69,6 +70,7 @@ class State:
     latest: dict = {"weight_g": 0, "food_level_pct": None, "state": "IDLE", "ts": None}
     system: dict = {"temp_c": None, "fan_on": None}  # CCM hardware, via the MCU bridge
     mcu: NullMcuBridge | None = None
+    video: VideoPipeline | None = None
     pending_manual: set[int] = set()
     next_cmd_id: int = int(time.time()) & 0x3FFFFFFF
     low_food_alerted: bool = False
@@ -136,17 +138,50 @@ def _schedule_tuples() -> list[tuple[int, int, int]]:
     ]
 
 
+def _parse_roi(raw: str) -> tuple[int, int, int, int] | None:
+    try:
+        parts = [int(v) for v in raw.split(",")]
+        return tuple(parts) if len(parts) == 4 else None
+    except ValueError:
+        return None
+
+
+def _on_scale_weight(loop: asyncio.AbstractEventLoop, grams: int) -> None:
+    """Called from the video thread with a new scale reading; show it like telemetry."""
+    state.latest["weight_g"] = grams
+    db.add_reading(grams, state.latest.get("food_level_pct") or 0)
+
+    async def _bcast():
+        await state.hub.broadcast({"type": "telemetry", **state.latest})
+
+    asyncio.run_coroutine_threadsafe(_bcast(), loop)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init()
+    loop = asyncio.get_running_loop()
     state.mcu = make_mcu_bridge(settings.mcu_mode)
     state.feeder = make_feeder(settings.feeder_mode, settings.ble_address)
     state.feeder.subscribe(on_feeder_message)
     await state.feeder.start()
     await state.feeder.set_schedule(_schedule_tuples())
     mcu_task = asyncio.create_task(_mcu_task())
+    if settings.video_url:
+        model = settings.video_model if Path(settings.video_model).is_file() else ""
+        state.video = VideoPipeline(
+            settings.video_url,
+            model,
+            weight_provider=lambda: state.latest.get("weight_g"),
+            scale_roi=_parse_roi(settings.scale_roi),
+            scale_callback=lambda g: _on_scale_weight(loop, g),
+            detector_threads=settings.video_threads,
+        )
+        state.video.start()
     yield
     mcu_task.cancel()
+    if state.video:
+        state.video.stop()
     await state.feeder.stop()
 
 
@@ -160,12 +195,22 @@ def health():
 
 @app.get("/api/status")
 def status():
-    return {
+    video_mode = "live" if state.video else ("clip" if Path(settings.video_clip).is_file() else "none")
+    out = {
         "connected": bool(state.feeder and state.feeder.connected),
         "mode": settings.feeder_mode,
+        "video": video_mode,
+        "eating": bool(state.video and state.video.eating),
         **state.system,
         **state.latest,
     }
+    if state.video and state.video.detections_done:
+        out["video_stats"] = {
+            "detections": state.video.detections_done,
+            "avg_infer_ms": round(state.video.avg_infer_ms or 0, 1),
+            "detect_fps": round(state.video.detect_fps or 0, 1),
+        }
+    return out
 
 
 @app.get("/api/pets")
@@ -235,23 +280,24 @@ def history_daily(days: int = 30):
     return [{"date": d, "grams": g} for d, g in db.daily_history(days)]
 
 
-VIDEO_PATH = Path(
-    os.getenv(
-        "FOODI_VIDEO",
-        Path(__file__).resolve().parents[2] / "ai" / "results" / "cica1_roi.mp4",
-    )
-)
+async def _mjpeg_stream():
+    while True:
+        jpeg = state.video.latest_jpeg() if state.video else None
+        if jpeg:
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
+        await asyncio.sleep(0.1)  # ~10 fps to the browser
 
 
 @app.get("/api/video")
 def video():
-    """Pre-recorded clip of a detected pet at the bowl (offline demo path).
-
-    Phase 5 replaces this with the live MJPEG stream relayed from the feeder.
-    """
-    if not VIDEO_PATH.is_file():
-        raise HTTPException(404, "No video clip configured (set FOODI_VIDEO)")
-    return FileResponse(VIDEO_PATH, media_type="video/mp4")
+    """Live MJPEG from the feeder camera (phone in the prototype) with the AI
+    overlay, or the pre-recorded clip when no live source is configured."""
+    if state.video:
+        return StreamingResponse(_mjpeg_stream(), media_type="multipart/x-mixed-replace; boundary=frame")
+    clip = Path(settings.video_clip)
+    if clip.is_file():
+        return FileResponse(clip, media_type="video/mp4")
+    raise HTTPException(404, "No video configured (set FOODI_VIDEO_URL or FOODI_VIDEO)")
 
 
 @app.websocket("/ws")

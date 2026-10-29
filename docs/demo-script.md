@@ -1,5 +1,35 @@
 # Foodi demo script (3–5 min, fully offline)
 
+## Live camera via phone (video-prototype setup)
+1. Install an IP webcam app on a phone (Android: **IP Webcam**; iPhone: **EpocCam**).
+2. Put the phone and the CCM on the same Wi-Fi; start the stream
+   (IP Webcam: "Start server", note the URL, e.g. `http://192.168.1.50:8080/video`).
+3. Start the backend with the live source:
+   `FOODI_VIDEO_URL=http://<phone-ip>:8080/video python -m uvicorn app.main:app`
+4. The dashboard's Live view now shows the phone stream with the AI overlay
+   (green box = pet detected, red + "EATING" = eating detected).
+   If the phone drops, the backend reconnects automatically.
+   Rehearse without a phone: `FOODI_VIDEO_URL=../ai/clips/cica1.mp4`.
+
+## Reading the kitchen scale through the camera
+The backend decodes the scale's 7-segment LCD directly from the video -
+no wiring to the scale at all.
+
+1. Put the scale under/next to the bowl with its display facing the phone camera,
+   roughly frontal. Fix the phone; the camera must not move afterwards.
+2. Grab a still frame: open `http://<phone-ip>:8080/photo.jpg` in a browser and
+   save it. In any image viewer (Paint works), note the pixel coordinates of the
+   display's top-left and bottom-right corners.
+3. Start the backend with the region:
+   `FOODI_VIDEO_URL=http://<phone-ip>:8080/video FOODI_SCALE_ROI=x1,y1,x2,y2 python -m uvicorn app.main:app`
+4. The dashboard bowl weight now follows the real scale. The overlay draws a
+   yellow box around the display with the decoded value; when the pet blocks
+   the display, the last reading is held on purpose.
+
+Notes: LCD glare kills the reading - angle the phone so no lamp reflects on the
+display. Readings are median-filtered over 5 frames; one misread frame never
+reaches the dashboard.
+
 Rehearse twice. Everything runs on the laptop (or the UNO Q); no internet needed.
 
 ## Setup before the judges arrive

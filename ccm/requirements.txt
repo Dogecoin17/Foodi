@@ -3,3 +3,8 @@ uvicorn[standard]>=0.29
 bleak>=0.22
 pytest>=8.0
 httpx>=0.27
+# live video pipeline (phone/ESP32 camera + YOLOX overlay)
+opencv-python-headless>=4.8
+onnxruntime>=1.16
+numpy>=1.26
+psutil>=5.9  # simulate_uno_q.py resource monitor

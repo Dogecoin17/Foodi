@@ -172,6 +172,9 @@ text(s, Inches(7.3), Inches(1.9), Inches(5.4), Inches(4.8), [
     "- 1,375 frames analyzed, pet found in 99%",
     "- 11 ms average inference (max 28 ms) - real-time even on the UNO Q",
     "- Demo insight: intake 45% below the 14-day average for 2 days -> alert",
+    "",
+    "Fits the UNO Q (measured, pinned to 1 core):",
+    "- 190 MB RAM of 2 GB, 25% CPU, 12 detections/s (need 1-2)",
 ], size=18, color=ACCENT)
 
 # 6 - demo ----------------------------------------------------------------------

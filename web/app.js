@@ -12,6 +12,24 @@ function renderTemp(t) {
   $("temp").textContent = t != null ? Math.round(t) : "–";
 }
 
+let videoStarted = false;
+function renderVideo(mode) {
+  const card = $("videocard");
+  if (mode === "none") { card.style.display = "none"; return; }
+  card.style.display = "";
+  if (videoStarted) return;
+  videoStarted = true;
+  if (mode === "live") {
+    $("video").remove(); // MJPEG can't play in <video>; use <img>
+    const img = $("liveimg");
+    img.style.display = "";
+    img.src = "/api/video?t=" + Date.now();
+  } else {
+    $("liveimg").remove();
+    $("video").src = "/api/video";
+  }
+}
+
 function renderStatus(s) {
   $("conn").textContent = s.connected ? "feeder connected" : "feeder offline";
   $("conn").className = "pill " + (s.connected ? "ok" : "bad");
@@ -19,6 +37,7 @@ function renderStatus(s) {
   $("level").textContent = s.food_level_pct ?? "–";
   $("fstate").textContent = (s.state || "–").toLowerCase().replace("_", " ");
   if ("temp_c" in s) renderTemp(s.temp_c);
+  if (s.video) renderVideo(s.video);
 }
 
 function renderSchedule() {
@@ -108,7 +127,7 @@ function connectWs() {
 refresh().catch(console.error);
 connectWs();
 
-// Hide the live-view card if no clip is available (404).
+// Hide the live-view card if the clip is missing (404).
 $("video").addEventListener("error", () => {
-  $("video").closest(".card").style.display = "none";
+  $("videocard").style.display = "none";
 });

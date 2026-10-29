@@ -45,11 +45,14 @@ def test_pets():
 
 
 def test_video_not_ready(tmp_path, monkeypatch):
+    import dataclasses
+
     import app.main as m
 
-    monkeypatch.setattr(m, "VIDEO_PATH", tmp_path / "missing.mp4")
+    monkeypatch.setattr(m, "settings", dataclasses.replace(m.settings, video_clip=str(tmp_path / "missing.mp4")))
     with TestClient(app) as c:
         assert c.get("/api/video").status_code == 404
+        assert c.get("/api/status").json()["video"] == "none"
 
 
 def test_video_serves_clip():
