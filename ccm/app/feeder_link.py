@@ -164,11 +164,16 @@ class BleFeeder(FeederLink):
 
     async def _run(self) -> None:
         """Connect once, then keep reconnecting with backoff (spec: sync on every reconnect)."""
-        from bleak import BleakClient  # imported lazily so the simulator needs no BLE stack
+        from bleak import BleakClient, BleakScanner  # imported lazily so the simulator needs no BLE stack
 
         backoff = 1.0
         while True:
             try:
+                if not self.address:
+                    dev = await BleakScanner.find_device_by_name("foodi-feeder", timeout=10)
+                    if not dev:
+                        raise RuntimeError("feeder 'foodi-feeder' not found while scanning")
+                    self.address = dev.address
                 self._client = BleakClient(self.address, disconnected_callback=self._on_disconnect)
                 await self._client.connect()
                 await self._client.start_notify(self.EVENT, self._on_notify)

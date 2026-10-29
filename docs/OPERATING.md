@@ -144,20 +144,61 @@ Missing screenshots become labeled placeholder boxes, so you can iterate.
 
 ---
 
-## 6. Optional: feeder firmware build (ESP32-S3)
+## 6. Feeder prototype: ESP-WROOM-32 + 28BYJ-48 stepper
 
-Not needed for the video; this validates the real-product firmware compiles.
+The prototype feeder uses an ESP-WROOM-32 devkit. It speaks the same BLE
+protocol as the final product, so the laptop CCM treats it like real hardware.
+There is no load cell: the stepper doses volumetrically (steps per gram) and
+the CCM reads the actual bowl weight from the kitchen scale via the camera
+(section 3).
+
+### Wiring (28BYJ-48 + ULN2003)
+
+| ULN2003 | ESP32 GPIO | Note |
+|---|---|---|
+| IN1 | 25 | |
+| IN2 | 26 | |
+| IN3 | 27 | |
+| IN4 | 14 | |
+| + | 5V (VIN) | ULN2003 powers the motor, not a GPIO |
+| – | GND | common ground |
+
+Do NOT use GPIO 6-11 on the WROOM-32 (connected to the internal flash).
+Avoid 0/2/12/15 (boot strapping pins).
+
+### Build and flash
 
 ```bash
 cd feeder
-python -m venv .venv && .venv/Scripts/python -m pip install platformio
-.venv/Scripts/pio run           # or: pio run if PlatformIO is installed globally
+.venv/bin/pio run -e esp32dev                    # build
+.venv/bin/pio run -e esp32dev -t upload          # flash (hold BOOT if asked)
+.venv/bin/pio device monitor -b 115200           # serial console: "foodi-feeder up, advertising"
 ```
 
-Expected: SUCCESS, ~23% flash, ~10% RAM. Flashing and BLE testing require the
-actual ESP32-S3 and are part of the post-competition roadmap.
+Serial console commands: `status`, `refill`, `tare`.
 
-## 7. Optional: UNO Q deployment (when the board arrives)
+### Run the CCM against the real feeder
+
+```bash
+cd ccm
+FOODI_FEEDER=ble FOODI_VIDEO_URL=http://<phone-ip>:8080/video FOODI_SCALE_ROI=x1,y1,x2,y2 \
+  python -m uvicorn app.main:app
+```
+
+No MAC address needed: the backend scans for the BLE name `foodi-feeder`.
+Press **Feed now** – the stepper turns and the scale's number climbs on the
+dashboard. If BLE is flaky, the feeder keeps its schedule autonomously and
+reconnects with backoff.
+
+### Calibrate the stepper
+
+Dispense 50 g via Feed now, weigh what actually came out, and update
+`STEPS_PER_GRAM` in `feeder/src/main.cpp`:
+`new_value = 41.0 * 50 / measured_grams`, then rebuild and reflash.
+
+## 7. Final firmware build (ESP32-S3, post-competition)
+
+## 8. Optional: UNO Q deployment (when the board arrives)
 
 1. Connect the UNO Q via USB-C, open **Arduino App Lab**, first-time setup:
    Linux password + Wi-Fi credentials.
@@ -168,7 +209,7 @@ actual ESP32-S3 and are part of the post-competition roadmap.
 
 ---
 
-## 8. Tests
+## 9. Tests
 
 ```bash
 cd ccm && python -m pytest        # 37 tests: protocol, API, analytics, scale OCR

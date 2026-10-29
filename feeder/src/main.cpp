@@ -1,14 +1,33 @@
-// Foodi feeder firmware – ESP32-S3. Implements docs/ble-protocol.md (v1).
+// Foodi feeder firmware – ESP32-S3 / ESP32. Implements docs/ble-protocol.md (v1).
 // Roles: feeder = BLE peripheral (GATT server), CCM = central (client).
+//
+// Build variants:
+//   default            ESP32-S3, auger DC motor (PWM) + HX711 load cell (closed loop)
+//   -D FEEDER_STEPPER  28BYJ-48 stepper via ULN2003, volumetric dosing (steps/gram)
+//   -D FEEDER_NO_LOADCELL  no HX711; bowl weight comes from the CCM's camera scale reader
 #include <Arduino.h>
 #include <Preferences.h>
+#ifndef FEEDER_NO_LOADCELL
 #include <HX711.h>
+#endif
 #include <NimBLEDevice.h>
 
 // ---- pins: adjust to the real wiring --------------------------------------
+#ifndef FEEDER_NO_LOADCELL
 constexpr int PIN_HX711_DOUT = 4;
 constexpr int PIN_HX711_SCK = 5;
-constexpr int PIN_MOTOR_PWM = 6; // auger motor driver
+#endif
+#ifdef FEEDER_STEPPER
+// ULN2003 inputs; all safe GPIOs on the ESP-WROOM-32
+constexpr int PIN_IN1 = 25;
+constexpr int PIN_IN2 = 26;
+constexpr int PIN_IN3 = 27;
+constexpr int PIN_IN4 = 14;
+constexpr float STEPS_PER_GRAM = 41.0f; // TODO: calibrate - count steps for a known dispensed mass
+constexpr uint32_t STEP_PERIOD_MS = 2;  // half-step rate ~500 steps/s
+#else
+constexpr int PIN_MOTOR_PWM = 6; // auger motor driver (ESP32-S3; GPIO 6-11 are flash pins on WROOM-32!)
+#endif
 
 // ---- hard safety limits (enforced here regardless of what the CCM sends) ---
 constexpr uint16_t MAX_PORTION_G = 200;
@@ -170,7 +189,8 @@ static void flushReports()
   }
 }
 
-// ---- load cell ------------------------------------------------------------------
+// ---- load cell (skipped when the CCM reads an external scale via camera) ------
+#ifndef FEEDER_NO_LOADCELL
 HX711 scale;
 float calibrationFactor = 420.0f; // TODO: calibrate with a known mass
 float filteredGrams = 0.0f;
@@ -185,6 +205,9 @@ float bowlGrams()
   }
   return filteredGrams;
 }
+#else
+float bowlGrams() { return 0.0f; }
+#endif
 
 // ---- hopper level (estimated, persisted) -----------------------------------------
 Preferences prefs;
@@ -252,17 +275,55 @@ struct Dispense
   float startWeight;
   uint32_t startedMs;
   bool active;
+#ifdef FEEDER_STEPPER
+  uint32_t stepsTotal;
+  uint32_t stepsRemaining;
+  uint32_t nextStepMs;
+#endif
 };
 Dispense job{0, 0, 0, 0, false};
 
+#ifdef FEEDER_STEPPER
+// 28BYJ-48 half-step sequence (8 phases) on IN1..IN4
+const uint8_t STEP_SEQ[8][4] = {
+    {1, 0, 0, 0}, {1, 1, 0, 0}, {0, 1, 0, 0}, {0, 1, 1, 0},
+    {0, 0, 1, 0}, {0, 0, 1, 1}, {0, 0, 0, 1}, {1, 0, 0, 1}};
+uint8_t stepPhase = 0;
+
+void stepOnce()
+{
+  digitalWrite(PIN_IN1, STEP_SEQ[stepPhase][0]);
+  digitalWrite(PIN_IN2, STEP_SEQ[stepPhase][1]);
+  digitalWrite(PIN_IN3, STEP_SEQ[stepPhase][2]);
+  digitalWrite(PIN_IN4, STEP_SEQ[stepPhase][3]);
+  stepPhase = (stepPhase + 1) & 7;
+}
+
+void motorOff()
+{
+  digitalWrite(PIN_IN1, LOW);
+  digitalWrite(PIN_IN2, LOW);
+  digitalWrite(PIN_IN3, LOW);
+  digitalWrite(PIN_IN4, LOW); // coils off: no idle heating, free to turn
+}
+#else
 void motorOff() { analogWrite(PIN_MOTOR_PWM, 0); }
+#endif
+
+float deliveredGrams()
+{
+#ifdef FEEDER_STEPPER
+  return (job.stepsTotal - job.stepsRemaining) / STEPS_PER_GRAM;
+#else
+  float d = bowlGrams() - job.startWeight;
+  return d < 0 ? 0 : d;
+#endif
+}
 
 void finishDispense(bool ok, ErrorCode err, uint16_t seq)
 {
   motorOff();
-  float delivered = bowlGrams() - job.startWeight;
-  if (delivered < 0)
-    delivered = 0;
+  float delivered = deliveredGrams();
   uint16_t actual = (uint16_t)(delivered + 0.5f);
   job.active = false;
 
@@ -310,15 +371,40 @@ void startDispense(uint16_t seq, uint32_t cmdId, uint16_t grams)
     return;
   }
   sendAck(seq, cmdId);
+#ifdef FEEDER_STEPPER
+  job.cmdId = cmdId;
+  job.target = grams;
+  job.startWeight = 0;
+  job.startedMs = millis();
+  job.active = true;
+  job.stepsTotal = job.stepsRemaining = (uint32_t)(grams * STEPS_PER_GRAM + 0.5f);
+  job.nextStepMs = millis();
+#else
   job = {cmdId, grams, bowlGrams(), millis(), true};
-  state = State::Dispensing;
   analogWrite(PIN_MOTOR_PWM, MOTOR_PWM_FAST);
+#endif
+  state = State::Dispensing;
 }
 
 void updateDispense()
 {
   if (!job.active)
     return;
+#ifdef FEEDER_STEPPER
+  if ((int32_t)(millis() - job.nextStepMs) >= 0)
+  {
+    job.nextStepMs = millis() + STEP_PERIOD_MS;
+    stepOnce();
+    if (--job.stepsRemaining == 0)
+    {
+      finishDispense(true, ErrorCode::Jam, 0);
+      return;
+    }
+  }
+  if (millis() - job.startedMs > DISPENSE_TIMEOUT_MS)
+    finishDispense(false, ErrorCode::Jam, 0); // could not finish in time
+  return;
+#else
   float delivered = bowlGrams() - job.startWeight;
   if (delivered >= job.target)
   {
@@ -332,6 +418,7 @@ void updateDispense()
   }
   analogWrite(PIN_MOTOR_PWM, delivered >= job.target - COARSE_MARGIN_G ? MOTOR_PWM_SLOW
                                                                        : MOTOR_PWM_FAST);
+#endif
 }
 
 // ---- scheduled meals -----------------------------------------------------------------------
@@ -411,9 +498,11 @@ void handleCommand(const uint8_t *data, size_t len)
     }
     else
     {
+#ifndef FEEDER_NO_LOADCELL
       scale.tare();
       filteredGrams = 0.0f;
-      sendAck(seq, 0);
+#endif
+      sendAck(seq, 0); // without a load cell, tare is a no-op - still ACK
     }
     break;
 
@@ -538,10 +627,13 @@ void handleSerial()
   }
   else if (cmd == "tare" && !job.active)
   {
+#ifndef FEEDER_NO_LOADCELL
     scale.tare();
     filteredGrams = 0.0f;
+#endif
     Serial.println("tared");
   }
+#ifndef FEEDER_NO_LOADCELL
   else if (cmd.startsWith("cal ")) // "cal 155.5" = known mass in grams on the scale
   {
     float known = cmd.substring(4).toFloat();
@@ -553,6 +645,7 @@ void handleSerial()
       Serial.printf("calibrationFactor = %.2f (saved)\n", calibrationFactor);
     }
   }
+#endif
   else if (cmd == "status")
   {
     Serial.printf("state=%d bowl=%.1fg hopper=%u%% sched=%u time=%s\n", (int)state,
@@ -564,18 +657,27 @@ void handleSerial()
 void setup()
 {
   Serial.begin(115200);
+#ifdef FEEDER_STEPPER
+  pinMode(PIN_IN1, OUTPUT);
+  pinMode(PIN_IN2, OUTPUT);
+  pinMode(PIN_IN3, OUTPUT);
+  pinMode(PIN_IN4, OUTPUT);
+#else
   pinMode(PIN_MOTOR_PWM, OUTPUT);
+#endif
   motorOff(); // motor must be OFF at boot and after any fault
 
   prefs.begin("foodi", false);
-  calibrationFactor = prefs.getFloat("cal", calibrationFactor);
   hopperRemainingG = prefs.getFloat("hopper_g", HOPPER_CAPACITY_G);
   schedCmdCounter = prefs.getUInt("sched_ctr", 0);
   loadSchedule();
 
+#ifndef FEEDER_NO_LOADCELL
+  calibrationFactor = prefs.getFloat("cal", calibrationFactor);
   scale.begin(PIN_HX711_DOUT, PIN_HX711_SCK);
   scale.set_scale(calibrationFactor);
   scale.tare();
+#endif
 
   setupBle();
   Serial.println("foodi-feeder up, advertising");
