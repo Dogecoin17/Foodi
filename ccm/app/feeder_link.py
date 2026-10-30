@@ -231,7 +231,114 @@ class BleFeeder(FeederLink):
         await self._write(P.encode_tare(self._next_seq()))
 
 
-def make_feeder(mode: str, ble_address: str = "") -> FeederLink:
+class SerialFeeder(FeederLink):
+    """Arduino Nano feeder over USB serial (video prototype): same protocol as BLE,
+    wrapped in frames (see protocol.encode_frame). Reconnects with backoff."""
+
+    BAUD = 115200
+
+    def __init__(self, port: str = "") -> None:
+        super().__init__()
+        self.port = port
+        self._serial = None
+        self._seq = 0
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._task: asyncio.Task | None = None
+        self._parser = P.FrameParser()
+        self._schedule: list[tuple[int, int, int]] = []
+        self._stopped = True
+
+    def _next_seq(self) -> int:
+        self._seq = (self._seq + 1) & 0xFFFF
+        return self._seq
+
+    async def start(self) -> None:
+        self._stopped = False
+        self._loop = asyncio.get_running_loop()
+        self._task = asyncio.create_task(self._run())
+
+    @staticmethod
+    def _detect_port() -> str:
+        from serial.tools import list_ports  # imported lazily: pyserial only needed for this mode
+
+        ports = list(list_ports.comports())
+        if not ports:
+            raise RuntimeError("no serial ports found - is the Nano plugged in?")
+        return ports[0].device
+
+    def _reader(self) -> None:
+        """Blocking read loop on its own thread; feeds parsed packets to the event loop."""
+        while not self._stopped and self._serial and self._serial.is_open:
+            try:
+                data = self._serial.read(64)
+            except Exception:
+                break
+            for packet in self._parser.feed(data):
+                try:
+                    msg = P.decode(packet)
+                except ValueError:
+                    continue
+                if self._loop:
+                    asyncio.run_coroutine_threadsafe(self._emit(msg), self._loop)
+        self.connected = False
+
+    async def _run(self) -> None:
+        import serial  # pyserial, lazy import
+
+        backoff = 1.0
+        while not self._stopped:
+            try:
+                if not self.port:
+                    self.port = self._detect_port()
+                self._serial = await asyncio.to_thread(serial.Serial, self.port, self.BAUD, timeout=0.2)
+                # opening the port resets the Nano (DTR); wait for the bootloader to finish
+                await asyncio.sleep(2.0)
+                self._serial.reset_input_buffer()
+                self._parser = P.FrameParser()
+                self.connected = True
+                backoff = 1.0
+                reader = asyncio.get_running_loop().run_in_executor(None, self._reader)
+                tz_min = int((datetime.now().astimezone().utcoffset() or timedelta()).total_seconds() // 60)
+                await self._write(P.encode_sync_time(self._next_seq(), int(time.time()), tz_min))
+                if self._schedule:
+                    await self._write(P.encode_set_schedule(self._next_seq(), self._schedule))
+                await reader  # returns when the link drops
+            except Exception:
+                self.connected = False
+            if not self._stopped:
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 30.0)
+
+    async def stop(self) -> None:
+        self._stopped = True
+        if self._task:
+            self._task.cancel()
+        if self._serial:
+            try:
+                self._serial.close()
+            except Exception:
+                pass
+        self.connected = False
+
+    async def _write(self, packet: bytes) -> None:
+        if self._serial and self._serial.is_open:
+            await asyncio.to_thread(self._serial.write, P.encode_frame(packet))
+
+    async def dispense(self, cmd_id: int, grams: int) -> None:
+        await self._write(P.encode_dispense(self._next_seq(), cmd_id, grams))
+
+    async def set_schedule(self, entries: list[tuple[int, int, int]]) -> None:
+        self._schedule = list(entries)
+        if self.connected:
+            await self._write(P.encode_set_schedule(self._next_seq(), entries))
+
+    async def tare(self) -> None:
+        await self._write(P.encode_tare(self._next_seq()))
+
+
+def make_feeder(mode: str, ble_address: str = "", serial_port: str = "") -> FeederLink:
     if mode == "ble":
         return BleFeeder(ble_address)
+    if mode == "serial":
+        return SerialFeeder(serial_port)
     return FakeFeeder()

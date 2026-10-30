@@ -1,6 +1,7 @@
 fastapi>=0.110
 uvicorn[standard]>=0.29
 bleak>=0.22
+pyserial>=3.5  # FOODI_FEEDER=serial (Arduino Nano over USB)
 pytest>=8.0
 httpx>=0.27
 # live video pipeline (phone/ESP32 camera + YOLOX overlay)

@@ -46,3 +46,17 @@ Errors: 1 bad version, 2 bad payload, 3 busy, 4 empty hopper, 5 over limit, 6 ja
 4. **Sync on connect:** CCM sends SYNC_TIME then SET_SCHEDULE after every (re)connect.
 5. **Limits:** feeder rejects portions above its own `MAX_PORTION_G` with NACK `over limit`, whatever the CCM says.
 6. **Timeouts:** CCM waits 2 s for ACK, retries up to 3 times with the same `cmd_id`, then raises an alert.
+
+## Serial transport (video prototype: Arduino Nano over USB)
+
+The same packets run unchanged over USB serial at 115200 8N1 (`FOODI_FEEDER=serial`).
+Because serial is a byte stream rather than discrete BLE writes, each packet is framed:
+
+```
+0xAA 0x55 | len u8 | packet (len bytes) | crc8(packet, poly 0x07, init 0x00)
+```
+
+Receivers hunt for the sync word and resync after a bad length or CRC, so
+garbage on the line never corrupts a following packet. Rule 3's reconnect
+report is a no-op here: a serial disconnect means the laptop is gone, and the
+Nano's schedule/hopper state lives in EEPROM instead.

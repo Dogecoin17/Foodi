@@ -130,3 +130,53 @@ def decode(data: bytes) -> Message:
     except struct.error as exc:
         raise ValueError(f"bad payload for {t.name}") from exc
     return Message(t, seq, p)
+
+
+# ---- serial framing (video prototype: Arduino Nano over USB) ------------------
+# BLE writes arrive as whole packets; a serial port is a byte stream, so packets
+# are wrapped: 0xAA 0x55 | len u8 | packet | crc8(packet, poly 0x07).
+FRAME_SYNC = b"\xaa\x55"
+
+
+def crc8(data: bytes) -> int:
+    crc = 0
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x07) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
+    return crc
+
+
+def encode_frame(packet: bytes) -> bytes:
+    if len(packet) > 255:
+        raise ValueError("packet too large for serial frame")
+    return FRAME_SYNC + bytes([len(packet)]) + packet + bytes([crc8(packet)])
+
+
+class FrameParser:
+    """Incremental frame decoder; resynchronises after garbage/partial reads."""
+
+    def __init__(self) -> None:
+        self._buf = bytearray()
+
+    def feed(self, data: bytes) -> list[bytes]:
+        self._buf += data
+        out: list[bytes] = []
+        while True:
+            start = self._buf.find(FRAME_SYNC)
+            if start < 0:  # keep at most the last byte: it could be half a sync word
+                del self._buf[:-1]
+                break
+            del self._buf[:start]
+            if len(self._buf) < 3:
+                break
+            end = 3 + self._buf[2] + 1  # sync + len + packet + crc
+            if len(self._buf) < end:
+                break
+            frame = bytes(self._buf[:end])
+            del self._buf[:end]
+            packet = frame[3:-1]
+            if crc8(packet) == frame[-1]:
+                out.append(packet)
+            # bad CRC: drop the frame; the sync scan continues after it
+        return out

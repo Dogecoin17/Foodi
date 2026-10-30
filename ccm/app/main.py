@@ -162,7 +162,7 @@ async def lifespan(_app: FastAPI):
     db.init()
     loop = asyncio.get_running_loop()
     state.mcu = make_mcu_bridge(settings.mcu_mode)
-    state.feeder = make_feeder(settings.feeder_mode, settings.ble_address)
+    state.feeder = make_feeder(settings.feeder_mode, settings.ble_address, settings.serial_port)
     state.feeder.subscribe(on_feeder_message)
     await state.feeder.start()
     await state.feeder.set_schedule(_schedule_tuples())

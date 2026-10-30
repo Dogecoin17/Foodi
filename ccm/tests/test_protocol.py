@@ -40,3 +40,29 @@ def test_rejects_bad_version_and_short_packets():
 
 def test_seq_wraps_to_u16():
     assert P.decode(P.encode_tare(0x10001)).seq == 1
+
+
+def test_serial_frame_roundtrip():
+    packet = P.encode_dispense(7, 123456, 40)
+    frames = P.FrameParser().feed(P.encode_frame(packet))
+    assert frames == [packet]
+    assert P.decode(frames[0]).payload == {"cmd_id": 123456, "grams": 40}
+
+
+def test_serial_frame_split_and_garbage():
+    packet = P.encode_telemetry(1, 120, 80, P.FeederState.IDLE)
+    blob = b"\x00\xffgarbage" + P.encode_frame(packet) + P.encode_frame(packet)
+    parser = P.FrameParser()
+    out = []
+    for byte in blob:  # byte-by-byte: exercises partial-frame buffering
+        out += parser.feed(bytes([byte]))
+    assert out == [packet, packet]
+
+
+def test_serial_frame_bad_crc_is_dropped():
+    good = P.encode_tare(5)
+    frame = bytearray(P.encode_frame(good))
+    frame[-1] ^= 0xFF  # corrupt the CRC
+    parser = P.FrameParser()
+    assert parser.feed(bytes(frame)) == []
+    assert parser.feed(P.encode_frame(good)) == [good]  # parser resyncs
