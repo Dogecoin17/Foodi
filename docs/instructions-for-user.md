@@ -87,8 +87,9 @@ If the CCM feels warm, its fans turn on by themselves – that is normal.
 
 ## Everyday life with Foodi
 
-- **Refill** when the low-food alert appears; the hopper counter resets
-  automatically when you confirm the refill in the app.
+- **Refill** when the low-food alert appears. Open the hopper, top up, and
+  reset the counter with the refill control (service port) so the estimate
+  starts again from full.
 - **Power cuts / Wi-Fi drops:** the feeder runs its schedule from its own
   memory and reports what it dispensed once the link returns.
 - **Moving house or new Wi-Fi:** repeat step 3, then power-cycle the feeder so
