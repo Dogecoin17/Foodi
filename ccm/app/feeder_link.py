@@ -35,6 +35,8 @@ class FeederLink(ABC):
     async def set_schedule(self, entries: list[tuple[int, int, int]]) -> None: ...
     @abstractmethod
     async def tare(self) -> None: ...
+    @abstractmethod
+    async def refill(self) -> None: ...
 
 
 class FakeFeeder(FeederLink):
@@ -133,6 +135,11 @@ class FakeFeeder(FeederLink):
 
     async def tare(self) -> None:
         self.bowl_g = 0.0
+
+    async def refill(self) -> None:
+        self.hopper_g = self.hopper_capacity_g
+        if self.state == P.FeederState.LOW_FOOD:
+            self.state = P.FeederState.IDLE
 
 
 class BleFeeder(FeederLink):
@@ -233,6 +240,9 @@ class BleFeeder(FeederLink):
 
     async def tare(self) -> None:
         await self._write(P.encode_tare(self._next_seq()))
+
+    async def refill(self) -> None:
+        await self._write(P.encode_refill(self._next_seq()))
 
 
 def make_feeder(mode: str, ble_address: str = "", wifi_creds: tuple[str, str] | None = None) -> FeederLink:

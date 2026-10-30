@@ -17,6 +17,7 @@ class MsgType(IntEnum):
     CMD_SET_SCHEDULE = 0x04
     CMD_SYNC_TIME = 0x05
     CMD_SET_WIFI = 0x06
+    CMD_REFILL = 0x07
     EVT_ACK = 0x81
     EVT_NACK = 0x82
     EVT_DISPENSED = 0x83
@@ -79,6 +80,10 @@ def encode_set_wifi(seq: int, ssid: str, password: str) -> bytes:
     return _pack(MsgType.CMD_SET_WIFI, seq, struct.pack("<B", len(s)) + s + struct.pack("<B", len(p)) + p)
 
 
+def encode_refill(seq: int) -> bytes:
+    return _pack(MsgType.CMD_REFILL, seq)
+
+
 # ---- encoders: feeder -> CCM (used by the simulator and tests) ---------------
 def encode_ack(seq: int, cmd_id: int = 0) -> bytes:
     return _pack(MsgType.EVT_ACK, seq, struct.pack("<I", cmd_id))
@@ -113,6 +118,8 @@ def decode(data: bytes) -> Message:
             (cmd_id,) = struct.unpack("<I", body)
             p = {"cmd_id": cmd_id}
         elif t == MsgType.CMD_TARE:
+            p = {}
+        elif t == MsgType.CMD_REFILL:
             p = {}
         elif t == MsgType.CMD_SYNC_TIME:
             ts, tz = struct.unpack("<Ih", body)

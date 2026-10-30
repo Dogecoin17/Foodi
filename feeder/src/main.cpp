@@ -68,6 +68,7 @@ enum class MsgType : uint8_t
   CMD_SET_SCHEDULE = 0x04,
   CMD_SYNC_TIME = 0x05,
   CMD_SET_WIFI = 0x06,
+  CMD_REFILL = 0x07,
   EVT_ACK = 0x81,
   EVT_NACK = 0x82,
   EVT_DISPENSED = 0x83,
@@ -616,6 +617,21 @@ void handleCommand(const uint8_t *data, size_t len)
       filteredGrams = 0.0f;
 #endif
       sendAck(seq, 0); // without a load cell, tare is a no-op - still ACK
+    }
+    break;
+
+  case MsgType::CMD_REFILL:
+    if (job.active)
+    {
+      sendNack(seq, 0, ErrorCode::Busy);
+    }
+    else
+    {
+      hopperRemainingG = HOPPER_CAPACITY_G;
+      saveHopper();
+      if (state == State::LowFood)
+        state = State::Idle;
+      sendAck(seq, 0);
     }
     break;
 

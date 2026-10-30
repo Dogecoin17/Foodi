@@ -107,6 +107,11 @@ $("feed").onclick = async () => {
   catch (e) { alert(e.message); }
 };
 
+$("refill").onclick = async () => {
+  try { await api("/api/refill", { method: "POST" }); }
+  catch (e) { alert(e.message); }
+};
+
 $("add").onclick = async () => {
   const [h, m] = $("time").value.split(":").map(Number);
   schedule.push({ minute_of_day: h * 60 + m, grams: +$("sgrams").value, days_mask: 127 });

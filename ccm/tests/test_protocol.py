@@ -48,3 +48,8 @@ def test_rejects_bad_version_and_short_packets():
 
 def test_seq_wraps_to_u16():
     assert P.decode(P.encode_tare(0x10001)).seq == 1
+
+
+def test_refill_roundtrip():
+    m = P.decode(P.encode_refill(9))
+    assert m.type == P.MsgType.CMD_REFILL and m.seq == 9 and m.payload == {}
