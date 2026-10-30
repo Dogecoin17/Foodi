@@ -12,7 +12,7 @@ hardware-faithful product code (BLE feeder firmware, UNO Q MCU bridge).
 ## 0. One-time setup
 
 Requirements: Python 3.12+, git. PlatformIO is only needed for the optional
-firmware build (section 6).
+firmware build (section 5).
 
 ```bash
 git clone https://github.com/Dogecoin17/Foodi.git
@@ -23,7 +23,6 @@ cd ccm
 python -m venv .venv
 .venv\Scripts\activate          # Windows (Git Bash: source .venv/Scripts/activate)
 pip install -r requirements.txt
-pip install python-pptx         # only needed to regenerate the presentation
 ```
 
 The YOLOX model (`ai/yolox_nano.onnx`) is in the repo; nothing else to download.
@@ -124,76 +123,51 @@ Re-run after any setup change so the report matches what you show.
 
 ---
 
-## 5. Feeder prototype: ESP-WROOM-32 or Arduino Nano + 28BYJ-48 stepper
+## 5. Feeder prototype: Arduino Nano + 28BYJ-48 stepper
 
-The prototype feeder uses an ESP-WROOM-32 devkit. It speaks the same BLE
-protocol as the final product, so the laptop CCM treats it like real hardware.
-There is no load cell: the stepper doses volumetrically (steps per gram) and
-the CCM reads the actual bowl weight from the kitchen scale via the camera
-(section 3).
+The demo feeder is an Arduino Nano connected to the laptop over USB. It runs
+the full feeder logic (schedule, idempotent dispense, hopper tracking,
+telemetry) and speaks the same packet protocol as the final product – carried
+over USB serial instead of BLE. There is no load cell: the stepper doses
+volumetrically (steps per gram) and the CCM reads the actual bowl weight from
+the kitchen scale via the camera (section 3). The video path is unchanged:
+the phone streams to the laptop over Wi-Fi (section 2 – same network).
 
-### Wiring (28BYJ-48 + ULN2003)
+### Wiring (28BYJ-48 + ULN2003 → Nano)
 
-| ULN2003 | ESP32 GPIO | Note |
+| ULN2003 | Nano | Note |
 |---|---|---|
-| IN1 | 25 | |
-| IN2 | 26 | |
-| IN3 | 27 | |
-| IN4 | 14 | |
-| + | 5V (VIN) | ULN2003 powers the motor, not a GPIO |
+| IN1 | D4 | control wires – keep the order, or the motor only vibrates |
+| IN2 | D5 | |
+| IN3 | D6 | |
+| IN4 | D7 | |
+| + | 5V | motor power from the Nano's 5V pin |
 | – | GND | common ground |
 
-Do NOT use GPIO 6-11 on the WROOM-32 (connected to the internal flash).
-Avoid 0/2/12/15 (boot strapping pins).
+The motor's white JST plug fits the ULN2003 socket in one direction only.
+The Nano is powered by the same USB cable that carries the data.
 
-### Build and flash
+- **Never use D0/D1** – they are the USB serial link; wiring anything to them
+  breaks uploads and the connection to the laptop.
+- Do not power the motor from 3.3V. If the Nano resets while dispensing,
+  power the ULN2003 from an external 5 V supply and connect its GND to the
+  Nano's GND.
 
-```bash
-cd feeder
-.venv/bin/pio run -e esp32dev                    # build
-.venv/bin/pio run -e esp32dev -t upload          # flash (hold BOOT if asked)
-.venv/bin/pio device monitor -b 115200           # serial console: "foodi-feeder up, advertising"
-```
-
-Serial console commands: `status`, `refill`, `tare`.
-
-### Run the CCM against the real feeder
-
-```bash
-cd ccm
-FOODI_FEEDER=ble FOODI_VIDEO_URL=http://<phone-ip>:8080/video FOODI_SCALE_ROI=x1,y1,x2,y2 \
-  python -m uvicorn app.main:app
-```
-
-No MAC address needed: the backend scans for the BLE name `foodi-feeder`.
-Press **Feed now** – the stepper turns and the scale's number climbs on the
-dashboard. If BLE is flaky, the feeder keeps its schedule autonomously and
-reconnects with backoff.
-
-### Calibrate the stepper
-
-Dispense 50 g via Feed now, weigh what actually came out, and update
-`STEPS_PER_GRAM` in `feeder/src/main.cpp`:
-`new_value = 41.0 * 50 / measured_grams`, then rebuild and reflash.
-
-### Alternative: Arduino Nano over USB serial
-
-If the ESP32 devkit is unavailable, the Nano runs the same feeder logic
-(schedule, idempotent dispense, hopper tracking, telemetry) with the same
-packet protocol, carried over USB serial instead of BLE. The video path is
-unchanged: phone streams to the laptop over Wi-Fi (section 2 – both devices
-on the same network).
-
-Wiring (28BYJ-48 + ULN2003): IN1–IN4 → Nano **D4, D5, D6, D7**, ULN2003
-`+` → 5V, `–` → GND. **Never use D0/D1** – they are the USB serial link.
+### Build and upload
 
 ```bash
 cd feeder
-.venv/bin/pio run -e nanoatmega328new -t upload   # modern Nano bootloader
-# upload fails with "not in sync"? old bootloader: -e nanoatmega328
+.venv/bin/pio run -e nanoatmega328new            # build
+.venv/bin/pio run -e nanoatmega328new -t upload  # flash over USB
 ```
 
-Run the CCM against it:
+Upload fails with `avrdude: stk500_recv(): not in sync`? The Nano has the old
+bootloader – run `.venv/bin/pio run -e nanoatmega328 -t upload` instead.
+
+To find the port: Windows Device Manager → Ports (COM & LPT), or
+`.venv/bin/pio device list` – look for a USB-SERIAL (CH340/FTDI) entry.
+
+### Run the CCM against the Nano feeder
 
 ```bash
 cd ccm
@@ -203,13 +177,38 @@ FOODI_VIDEO_URL=http://<phone-ip>:8080/video FOODI_SCALE_ROI=x1,y1,x2,y2 \
 ```
 
 `FOODI_SERIAL_PORT` may be omitted – the first serial port is used then.
-Notes: opening the port resets the Nano (the backend waits ~2 s, then syncs
-time and schedule); hopper/schedule survive resets in EEPROM; to refill the
-hopper counter, press **Refill done** in the dashboard (or send the letter
-`r` from any serial monitor). Calibrate
-`STEPS_PER_GRAM` in `feeder/nano/main.cpp` the same way as above.
+Opening the port resets the Nano; the backend waits ~2 s, then sends the time
+and the schedule. Press **Feed now** – the four ULN2003 LEDs flash in
+sequence, the motor turns, and the scale's number climbs on the dashboard.
+
+Notes:
+
+- Hopper level and schedule survive resets and power cuts (EEPROM).
+- Refill the hopper, then press **Refill done** in the dashboard to reset the
+  counter to 100 % (fallback: send the letter `r` from any serial monitor).
+- If the cable drops, the backend reconnects automatically; the feeder keeps
+  its schedule autonomously in the meantime.
+
+### Calibrate the stepper
+
+Dispense 50 g via Feed now, weigh what actually came out, and update
+`STEPS_PER_GRAM` in `feeder/nano/main.cpp`:
+`new_value = 41.0 * 50 / measured_grams`, then rebuild and reflash.
+
+### Alternative: ESP-WROOM-32 devkit over BLE
+
+If the devkit is available, the same firmware runs wirelessly:
+IN1–IN4 → GPIO 25/26/27/14, `+` → 5V (VIN), `–` → GND (never GPIO 6-11 –
+internal flash; avoid 0/2/12/15 – boot strapping). Flash with
+`.venv/bin/pio run -e esp32dev -t upload`, then run the backend with
+`FOODI_FEEDER=ble` (no address needed – it scans for the name
+`foodi-feeder`). Serial console commands: `status`, `refill`, `tare`.
+Calibrate `STEPS_PER_GRAM` in `feeder/src/main.cpp` the same way.
 
 ## 6. Final firmware build (ESP32-S3, post-competition)
+
+The final-hardware firmware (camera, Wi-Fi provisioning, SET_WIFI) and its
+runbook live on the `main` branch – see `docs/OPERATING.md` there.
 
 ## 7. Optional: UNO Q deployment (when the board arrives)
 
@@ -261,8 +260,9 @@ cd ccm && python -m pytest        # 41 tests: protocol (+ serial framing), API, 
 ## Shoot-day checklist
 
 1. `python -m app.seed_demo --force`
-2. Phone mounted, streaming, laptop on the same Wi-Fi
-3. Scale positioned, ROI measured (section 3)
-4. `FOODI_VIDEO_URL=... FOODI_SCALE_ROI=... python -m uvicorn app.main:app`
-5. Browser open at http://localhost:8000, Live view showing the overlay
-6. Follow `docs/demo-script.md`
+2. Nano wired and flashed (section 5), USB cable connected
+3. Phone mounted, streaming, laptop on the same Wi-Fi
+4. Scale positioned, ROI measured (section 3)
+5. `FOODI_FEEDER=serial FOODI_VIDEO_URL=... FOODI_SCALE_ROI=... python -m uvicorn app.main:app`
+6. Browser open at http://localhost:8000: Live view shows the overlay,
+   feeder card shows telemetry, Feed now turns the motor
