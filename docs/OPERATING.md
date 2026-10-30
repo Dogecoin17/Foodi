@@ -191,9 +191,10 @@ Notes:
 
 ### Calibrate the stepper
 
-Dispense 50 g via Feed now, weigh what actually came out, and update
-`STEPS_PER_GRAM` in `feeder/nano/main.cpp`:
-`new_value = 41.0 * 50 / measured_grams`, then rebuild and reflash.
+One Feed now = exactly a 90° turn (one drum compartment). If the angle is
+off, adjust `DISPENSE_STEPS` in `feeder/nano/main.cpp` (1 step ≈ 0.088°, so
+±5° ≈ ±57 steps). To calibrate the reported grams, weigh one dispensed
+portion and set `PORTION_G` to the measured value, then rebuild and reflash.
 
 ### Alternative: ESP-WROOM-32 devkit over BLE
 

@@ -15,7 +15,12 @@ constexpr int PIN_IN1 = 4;
 constexpr int PIN_IN2 = 5;
 constexpr int PIN_IN3 = 6;
 constexpr int PIN_IN4 = 7;
-constexpr float STEPS_PER_GRAM = 41.0f; // TODO: calibrate - count steps for a known dispensed mass
+// One dispense = exactly a quarter turn of the drum (90° -> one compartment).
+// 28BYJ-48 real gearing ≈ 63.684:1 -> ~4076 half-steps per output revolution;
+// 90° ≈ 1019 half-steps. Angle off? Adjust DISPENSE_STEPS: 1 step ≈ 0.088°
+// (the ±5° tolerance is about ±57 steps).
+constexpr uint32_t DISPENSE_STEPS = 1019;
+constexpr float PORTION_G = 30.0f; // grams per 90° turn - weigh one dispense and adjust
 constexpr uint32_t STEP_PERIOD_MS = 2;  // half-step rate ~500 steps/s
 
 // ---- hard safety limits ------------------------------------------------------
@@ -257,7 +262,7 @@ void motorOff()
   digitalWrite(PIN_IN4, LOW); // coils off: no idle heating, free to turn
 }
 
-float deliveredGrams() { return (job.stepsTotal - job.stepsRemaining) / STEPS_PER_GRAM; }
+float deliveredGrams() { return PORTION_G * (job.stepsTotal - job.stepsRemaining) / job.stepsTotal; }
 
 void finishDispense(bool ok, ErrorCode err, uint16_t seq)
 {
@@ -313,7 +318,7 @@ void startDispense(uint16_t seq, uint32_t cmdId, uint16_t grams)
   job.target = grams;
   job.startedMs = millis();
   job.active = true;
-  job.stepsTotal = job.stepsRemaining = (uint32_t)(grams * STEPS_PER_GRAM + 0.5f);
+  job.stepsTotal = job.stepsRemaining = DISPENSE_STEPS; // one 90° turn per feed
   job.nextStepMs = millis();
   state = State::Dispensing;
 }
