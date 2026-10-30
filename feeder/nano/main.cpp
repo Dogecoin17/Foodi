@@ -38,6 +38,7 @@ enum class MsgType : uint8_t
   CMD_TARE = 0x03,
   CMD_SET_SCHEDULE = 0x04,
   CMD_SYNC_TIME = 0x05,
+  CMD_REFILL = 0x07,
   EVT_ACK = 0x81,
   EVT_NACK = 0x82,
   EVT_DISPENSED = 0x83,
@@ -409,6 +410,21 @@ void handlePacket(const uint8_t *data, size_t len)
       sendNack(seq, 0, ErrorCode::Busy);
     else
       sendAck(seq, 0); // no load cell: tare is a no-op - still ACK
+    break;
+
+  case MsgType::CMD_REFILL:
+    if (job.active)
+    {
+      sendNack(seq, 0, ErrorCode::Busy);
+    }
+    else
+    {
+      hopperRemainingG = HOPPER_CAPACITY_G;
+      EEPROM.put(ADDR_HOPPER, hopperRemainingG);
+      if (state == State::LowFood)
+        state = State::Idle;
+      sendAck(seq, 0);
+    }
     break;
 
   case MsgType::CMD_SYNC_TIME:

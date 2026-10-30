@@ -263,6 +263,14 @@ async def feed(req: FeedRequest):
     return {"cmd_id": cmd_id, "grams": grams}
 
 
+@app.post("/api/refill")
+async def refill():
+    if not (state.feeder and state.feeder.connected):
+        raise HTTPException(503, "Feeder not connected")
+    await state.feeder.refill()
+    return {"ok": True, "food_level_pct": 100}
+
+
 @app.get("/api/events")
 def events(limit: int = 50):
     return db.rows("SELECT * FROM feed_events ORDER BY ts DESC LIMIT ?", (limit,))

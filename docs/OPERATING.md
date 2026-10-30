@@ -205,7 +205,8 @@ FOODI_VIDEO_URL=http://<phone-ip>:8080/video FOODI_SCALE_ROI=x1,y1,x2,y2 \
 `FOODI_SERIAL_PORT` may be omitted – the first serial port is used then.
 Notes: opening the port resets the Nano (the backend waits ~2 s, then syncs
 time and schedule); hopper/schedule survive resets in EEPROM; to refill the
-hopper, send the letter `r` from any serial monitor. Calibrate
+hopper counter, press **Refill done** in the dashboard (or send the letter
+`r` from any serial monitor). Calibrate
 `STEPS_PER_GRAM` in `feeder/nano/main.cpp` the same way as above.
 
 ## 6. Final firmware build (ESP32-S3, post-competition)
@@ -224,7 +225,7 @@ hopper, send the letter `r` from any serial monitor. Calibrate
 ## 8. Tests
 
 ```bash
-cd ccm && python -m pytest        # 40 tests: protocol (+ serial framing), API, analytics, scale OCR
+cd ccm && python -m pytest        # 41 tests: protocol (+ serial framing), API, analytics, scale OCR
 ```
 
 ---

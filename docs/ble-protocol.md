@@ -27,6 +27,7 @@ Negotiate MTU >= 64. Every message fits in one packet.
 | 0x03 | TARE | – |
 | 0x04 | SET_SCHEDULE | `count u8`, then per entry: `minute_of_day u16`, `grams u16`, `days_mask u8` (bit0 = Monday) |
 | 0x05 | SYNC_TIME | `unix_ts u32`, `tz_offset_min i16` |
+| 0x07 | REFILL | – – hopper counter back to full, clears low-food; NACK `busy` while dispensing |
 
 ## Events (feeder -> CCM)
 | Type | Name | Payload |

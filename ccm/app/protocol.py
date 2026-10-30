@@ -16,6 +16,7 @@ class MsgType(IntEnum):
     CMD_TARE = 0x03
     CMD_SET_SCHEDULE = 0x04
     CMD_SYNC_TIME = 0x05
+    CMD_REFILL = 0x07
     EVT_ACK = 0x81
     EVT_NACK = 0x82
     EVT_DISPENSED = 0x83
@@ -62,6 +63,10 @@ def encode_tare(seq: int) -> bytes:
     return _pack(MsgType.CMD_TARE, seq)
 
 
+def encode_refill(seq: int) -> bytes:
+    return _pack(MsgType.CMD_REFILL, seq)
+
+
 def encode_sync_time(seq: int, unix_ts: int, tz_offset_min: int) -> bytes:
     return _pack(MsgType.CMD_SYNC_TIME, seq, struct.pack("<Ih", unix_ts, tz_offset_min))
 
@@ -105,6 +110,8 @@ def decode(data: bytes) -> Message:
             (cmd_id,) = struct.unpack("<I", body)
             p = {"cmd_id": cmd_id}
         elif t == MsgType.CMD_TARE:
+            p = {}
+        elif t == MsgType.CMD_REFILL:
             p = {}
         elif t == MsgType.CMD_SYNC_TIME:
             ts, tz = struct.unpack("<Ih", body)
