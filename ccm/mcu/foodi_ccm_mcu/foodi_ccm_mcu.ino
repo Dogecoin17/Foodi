@@ -11,19 +11,22 @@
 //   fan_on()    -> bool
 //   set_conn_leds(bool feeder, bool wifi)
 //
-// Wiring notes:
-//   - power LED and the main switch are hard-wired (5 V rail), no MCU needed
-//   - HX-3S-01 BMS is protection-only, no data lines
-//   - both 40 mm fans share one PWM pin through a transistor/MOSFET stage
-//   - LEDs with series resistors, active HIGH
+// Wiring (matches the CCM schematic):
+//   - fan: FAN CTRL = D8 -> 1k -> PN2222A base, fans on the 12.6 V rail,
+//     1N4001 flyback across the fans
+//   - LEDs (active HIGH, 1k series): D0 = on/off (red), D1 = Wi-Fi (blue),
+//     D2 = Bluetooth/feeder (blue), D3 = charging (red, see note below)
+//   - BMP280 on SDA/SCL; power LED and the main switch are hard-wired
+//   - HX-3S-01 / HW-288 BMS is protection-only, no data lines
 #include <Arduino_RouterBridge.h>
 #include <Wire.h>
 #include <Adafruit_BMP280.h>
 
-constexpr int PIN_FAN = 9;        // PWM, both fans via driver stage
-constexpr int PIN_LED_ON = 2;     // lit while the MCU runs
-constexpr int PIN_LED_FEEDER = 3; // feeder (BLE) link
-constexpr int PIN_LED_WIFI = 4;   // local network link
+constexpr int PIN_FAN = 8;          // FAN CTRL, both fans via PN2222A stage
+constexpr int PIN_LED_ON = 0;       // LED1: lit while the MCU runs
+constexpr int PIN_LED_WIFI = 1;     // LED2: local network link
+constexpr int PIN_LED_FEEDER = 2;   // LED3: feeder (BLE) link
+constexpr int PIN_LED_CHARGING = 3; // LED4: no charge signal from the BMS, kept off
 
 constexpr float FAN_ON_C = 50.0f;  // hysteresis: on above this
 constexpr float FAN_OFF_C = 45.0f; // off below this
@@ -68,7 +71,12 @@ void setup()
   pinMode(PIN_LED_ON, OUTPUT);
   pinMode(PIN_LED_FEEDER, OUTPUT);
   pinMode(PIN_LED_WIFI, OUTPUT);
+  pinMode(PIN_LED_CHARGING, OUTPUT);
   digitalWrite(PIN_LED_ON, HIGH); // "on" LED
+  // The BMS exposes no charge signal, so the MCU cannot know when the wall
+  // charger is connected; keep LED4 off. If a charge indicator is wanted,
+  // hard-wire LED4 + 1k from the 12.6 V jack to GND instead.
+  digitalWrite(PIN_LED_CHARGING, LOW);
 
   bmpOk = bmp.begin(0x76) || bmp.begin(0x77);
   if (!bmpOk)

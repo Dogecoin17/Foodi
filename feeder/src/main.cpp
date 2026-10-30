@@ -2,9 +2,11 @@
 // Roles: feeder = BLE peripheral (GATT server), CCM = central (client).
 //
 // Build variants:
-//   default            ESP32-S3, auger DC motor (PWM) + HX711 load cell (closed loop)
+//   default            auger DC motor (PWM) + HX711 load cell (closed loop)
 //   -D FEEDER_STEPPER  28BYJ-48 stepper via ULN2003, volumetric dosing (steps/gram)
 //   -D FEEDER_NO_LOADCELL  no HX711; bowl weight comes from the CCM's camera scale reader
+//   -D FEEDER_CAMERA   ESP32-S3 camera: Wi-Fi MJPEG stream (credentials via SET_WIFI)
+//   (the esp32s3 platformio env combines FEEDER_CAMERA + FEEDER_STEPPER + FEEDER_NO_LOADCELL)
 #include <Arduino.h>
 #include <Preferences.h>
 #ifndef FEEDER_NO_LOADCELL
@@ -22,11 +24,20 @@ constexpr int PIN_HX711_DOUT = 4;
 constexpr int PIN_HX711_SCK = 5;
 #endif
 #ifdef FEEDER_STEPPER
-// ULN2003 inputs; all safe GPIOs on the ESP-WROOM-32
+// ULN2003 inputs. Board-dependent: the ESP32-S3 camera build occupies
+// GPIO 6-18 and 38-48 for the camera, so it uses the free pins 1/2/4/5;
+// the WROOM-32 devkit uses 25/26/27/14 (1/3 are UART0 there).
+#ifdef FEEDER_CAMERA
+constexpr int PIN_IN1 = 1;
+constexpr int PIN_IN2 = 2;
+constexpr int PIN_IN3 = 4;
+constexpr int PIN_IN4 = 5;
+#else
 constexpr int PIN_IN1 = 25;
 constexpr int PIN_IN2 = 26;
 constexpr int PIN_IN3 = 27;
 constexpr int PIN_IN4 = 14;
+#endif
 constexpr float STEPS_PER_GRAM = 41.0f; // TODO: calibrate - count steps for a known dispensed mass
 constexpr uint32_t STEP_PERIOD_MS = 2;  // half-step rate ~500 steps/s
 #else

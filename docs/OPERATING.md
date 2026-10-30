@@ -218,6 +218,10 @@ FOODI_VIDEO_URL=http://<feeder-ip>:81/stream python -m uvicorn app.main:app
    (`camera stream: http://<ip>:81/stream`) – use that URL as `FOODI_VIDEO_URL`.
 3. The camera pin map defaults to the XIAO ESP32-S3 Sense; adjust the `CAM_*`
    constants in `feeder/src/main.cpp` for other boards.
+4. The stepper is a 28BYJ-48 on a ULN2003, GPIO 1/2/4/5 (the camera occupies
+   most other pins). Dosing is volumetric – calibrate `STEPS_PER_GRAM` as in
+   section 6. There is no load cell: the CCM reads the kitchen scale through
+   the camera, exactly like the prototype.
 
 ## 8. Optional: UNO Q deployment (when the board arrives)
 

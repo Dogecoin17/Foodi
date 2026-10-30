@@ -100,7 +100,7 @@ docs/     BLE protocol, API notes
 - [ ] Run the backend simulator on every teammate's laptop (`README.md`)
 - [ ] Get the UNO Q running: Arduino App Lab, Python + sketch "hello", one Bridge round trip. **Record** CPU/RAM, Python version, what inference runtimes work
 - [ ] Confirm feeder MCU (ESP32-S3 with camera recommended) and PlatformIO toolchain
-- [ ] Confirm with hardware team: motor type, load cell + HX711, food-level sensor, power (wall vs battery)
+- [x] Hardware decided: 28BYJ-48 stepper + ULN2003 (volumetric dosing); no load cell – the CCM reads a kitchen scale through the camera; 3x 18650 + 3S BMS, wall-plug charging
 - [ ] Review and freeze BLE spec v1 and REST API v1 with the hardware/firmware people
 
 **DoD:** everyone can run the simulator; UNO Q hello-world works; interfaces frozen.
@@ -116,8 +116,8 @@ docs/     BLE protocol, API notes
 **DoD:** with no hardware, press "Feed now" via API and see the event logged and broadcast.
 
 ## Phase 2 – Feeder firmware (weeks 1–2, in parallel)
-- [ ] Bring up load cell (HX711): tare, calibrate with a known mass, filter noise
-- [ ] Motor control: auger dispense to target grams with closed-loop weight feedback and timeout/jam detection
+- [x] Bowl weight: no load cell – CCM reads a kitchen scale through the camera (`scale.py` 7-segment reader)
+- [x] Dispense: stepper volumetric dosing to target grams with timeout/jam guard (`STEPS_PER_GRAM` calibration)
 - [ ] Local schedule storage (NVS) and RTC/time-sync
 - [ ] BLE peripheral (NimBLE): command, status, telemetry characteristics per spec
 - [ ] Safety: max portion, low-food state, watchdog, safe motor-off on any fault
