@@ -16,6 +16,7 @@ class MsgType(IntEnum):
     CMD_TARE = 0x03
     CMD_SET_SCHEDULE = 0x04
     CMD_SYNC_TIME = 0x05
+    CMD_SET_WIFI = 0x06
     EVT_ACK = 0x81
     EVT_NACK = 0x82
     EVT_DISPENSED = 0x83
@@ -71,6 +72,13 @@ def encode_set_schedule(seq: int, entries: list[tuple[int, int, int]]) -> bytes:
     return _pack(MsgType.CMD_SET_SCHEDULE, seq, body)
 
 
+def encode_set_wifi(seq: int, ssid: str, password: str) -> bytes:
+    s, p = ssid.encode(), password.encode()
+    if len(s) > 32 or len(p) > 63:
+        raise ValueError("ssid/password too long")
+    return _pack(MsgType.CMD_SET_WIFI, seq, struct.pack("<B", len(s)) + s + struct.pack("<B", len(p)) + p)
+
+
 # ---- encoders: feeder -> CCM (used by the simulator and tests) ---------------
 def encode_ack(seq: int, cmd_id: int = 0) -> bytes:
     return _pack(MsgType.EVT_ACK, seq, struct.pack("<I", cmd_id))
@@ -113,6 +121,14 @@ def decode(data: bytes) -> Message:
             (count,) = struct.unpack_from("<B", body)
             entries = [SCHEDULE_ENTRY.unpack_from(body, 1 + i * SCHEDULE_ENTRY.size) for i in range(count)]
             p = {"entries": entries}
+        elif t == MsgType.CMD_SET_WIFI:
+            (slen,) = struct.unpack_from("<B", body)
+            ssid = body[1:1 + slen].decode()
+            (plen,) = struct.unpack_from("<B", body, 1 + slen)
+            password = body[2 + slen:2 + slen + plen].decode()
+            if len(body) != 2 + slen + plen:
+                raise ValueError("bad SET_WIFI payload")
+            p = {"ssid": ssid, "password": password}
         elif t == MsgType.EVT_ACK:
             (cmd_id,) = struct.unpack("<I", body)
             p = {"cmd_id": cmd_id}

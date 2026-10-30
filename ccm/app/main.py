@@ -162,7 +162,8 @@ async def lifespan(_app: FastAPI):
     db.init()
     loop = asyncio.get_running_loop()
     state.mcu = make_mcu_bridge(settings.mcu_mode)
-    state.feeder = make_feeder(settings.feeder_mode, settings.ble_address)
+    wifi_creds = (settings.wifi_ssid, settings.wifi_password) if settings.wifi_ssid else None
+    state.feeder = make_feeder(settings.feeder_mode, settings.ble_address, wifi_creds)
     state.feeder.subscribe(on_feeder_message)
     await state.feeder.start()
     await state.feeder.set_schedule(_schedule_tuples())

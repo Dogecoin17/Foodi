@@ -29,6 +29,14 @@ def test_sync_time_negative_tz():
     assert P.decode(P.encode_sync_time(1, 1_700_000_000, -300)).payload["tz_offset_min"] == -300
 
 
+def test_set_wifi_roundtrip():
+    m = P.decode(P.encode_set_wifi(5, "HomeNet", "s3cret"))
+    assert m.type == P.MsgType.CMD_SET_WIFI
+    assert m.payload == {"ssid": "HomeNet", "password": "s3cret"}
+    with pytest.raises(ValueError):
+        P.encode_set_wifi(1, "x" * 33, "ok")  # ssid too long
+
+
 def test_rejects_bad_version_and_short_packets():
     with pytest.raises(ValueError):
         P.decode(b"\x09\x01\x00\x00")

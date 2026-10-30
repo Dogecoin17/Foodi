@@ -11,6 +11,9 @@ class Settings:
     feeder_mode: str = os.getenv("FOODI_FEEDER", "fake")  # "fake" | "ble"
     ble_address: str = os.getenv("FOODI_BLE_ADDRESS", "")
     mcu_mode: str = os.getenv("FOODI_MCU", "off")  # "bridge" on the UNO Q, "off" elsewhere
+    # home Wi-Fi pushed to the feeder over BLE (SET_WIFI) so it can stream video
+    wifi_ssid: str = os.getenv("FOODI_WIFI_SSID", "")
+    wifi_password: str = os.getenv("FOODI_WIFI_PASSWORD", "")
     # Live video source: MJPEG URL (phone/ESP32), camera index, or video file.
     # Empty = serve the pre-recorded clip at video_clip instead.
     video_url: str = os.getenv("FOODI_VIDEO_URL", "")

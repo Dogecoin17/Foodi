@@ -196,7 +196,28 @@ Dispense 50 g via Feed now, weigh what actually came out, and update
 `STEPS_PER_GRAM` in `feeder/src/main.cpp`:
 `new_value = 41.0 * 50 / measured_grams`, then rebuild and reflash.
 
-## 7. Final firmware build (ESP32-S3, post-competition)
+## 7. Final hardware (ESP32-S3 feeder + camera, post-competition)
+
+The `esp32s3` firmware target adds Wi-Fi provisioning and the camera stream:
+
+```bash
+cd feeder
+.venv/bin/pio run -e esp32s3 -t upload
+```
+
+1. Start the CCM with the home Wi-Fi credentials – they are pushed to the
+   feeder over BLE (SET_WIFI command) on every connect and stored in the
+   feeder's flash:
+
+```bash
+FOODI_FEEDER=ble FOODI_WIFI_SSID=<ssid> FOODI_WIFI_PASSWORD=<pass> \
+FOODI_VIDEO_URL=http://<feeder-ip>:81/stream python -m uvicorn app.main:app
+```
+
+2. The feeder's serial monitor prints its IP once it joins Wi-Fi
+   (`camera stream: http://<ip>:81/stream`) – use that URL as `FOODI_VIDEO_URL`.
+3. The camera pin map defaults to the XIAO ESP32-S3 Sense; adjust the `CAM_*`
+   constants in `feeder/src/main.cpp` for other boards.
 
 ## 8. Optional: UNO Q deployment (when the board arrives)
 
@@ -212,7 +233,7 @@ Dispense 50 g via Feed now, weigh what actually came out, and update
 ## 9. Tests
 
 ```bash
-cd ccm && python -m pytest        # 37 tests: protocol, API, analytics, scale OCR
+cd ccm && python -m pytest        # 38 tests: protocol, API, analytics, scale OCR
 ```
 
 ---
@@ -240,6 +261,7 @@ cd ccm && python -m pytest        # 37 tests: protocol, API, analytics, scale OC
 | `FOODI_VIDEO` | `ai/results/cica1_roi.mp4` | fallback clip |
 | `FOODI_FEEDER` | `fake` | `fake` (simulator) or `ble` (real feeder) |
 | `FOODI_BLE_ADDRESS` | – | feeder MAC when `FOODI_FEEDER=ble` |
+| `FOODI_WIFI_SSID` / `FOODI_WIFI_PASSWORD` | – | sent to the feeder over BLE (SET_WIFI) so it can join the LAN and stream video |
 | `FOODI_MCU` | `off` | `bridge` on the UNO Q (fans/LEDs) |
 | `FOODI_DB` | `foodi.db` | SQLite path |
 | `FOODI_MAX_PORTION_G` / `FOODI_DAILY_MAX_G` | 200 / 600 | safety clamps |

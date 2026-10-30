@@ -11,6 +11,10 @@
 #include <HX711.h>
 #endif
 #include <NimBLEDevice.h>
+#ifdef FEEDER_CAMERA
+#include <WiFi.h> // BLE-only builds skip the Wi-Fi stack entirely (~600 KB of flash)
+#include "esp_camera.h"
+#endif
 
 // ---- pins: adjust to the real wiring --------------------------------------
 #ifndef FEEDER_NO_LOADCELL
@@ -52,6 +56,7 @@ enum class MsgType : uint8_t
   CMD_TARE = 0x03,
   CMD_SET_SCHEDULE = 0x04,
   CMD_SYNC_TIME = 0x05,
+  CMD_SET_WIFI = 0x06,
   EVT_ACK = 0x81,
   EVT_NACK = 0x82,
   EVT_DISPENSED = 0x83,
@@ -449,6 +454,103 @@ void checkSchedule()
   }
 }
 
+// ---- Wi-Fi (provisioned over BLE via SET_WIFI, stored in NVS) -------------------
+String wifiSsid, wifiPass;
+
+void wifiConnect()
+{
+#ifdef FEEDER_CAMERA
+  if (wifiSsid.isEmpty())
+    return;
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+  Serial.printf("wifi: joining %s\n", wifiSsid.c_str());
+#endif
+  // BLE-only builds (video prototype) store the credentials but never join Wi-Fi
+}
+
+// ---- camera (ESP32-S3 only): MJPEG stream on http://<feeder-ip>:81/stream -------
+#ifdef FEEDER_CAMERA
+// Pin map: XIAO ESP32-S3 Sense. Adjust for your camera board.
+constexpr int CAM_PWDN = -1, CAM_RESET = -1, CAM_XCLK = 10;
+constexpr int CAM_SIOD = 40, CAM_SIOC = 39;
+constexpr int CAM_D7 = 48, CAM_D6 = 11, CAM_D5 = 12, CAM_D4 = 14;
+constexpr int CAM_D3 = 16, CAM_D2 = 18, CAM_D1 = 17, CAM_D0 = 15;
+constexpr int CAM_VSYNC = 38, CAM_HREF = 47, CAM_PCLK = 13;
+
+bool cameraOk = false;
+bool streamStarted = false;
+
+void cameraInit()
+{
+  camera_config_t c = {};
+  c.pin_pwdn = CAM_PWDN;
+  c.pin_reset = CAM_RESET;
+  c.pin_xclk = CAM_XCLK;
+  c.pin_sccb_sda = CAM_SIOD;
+  c.pin_sccb_scl = CAM_SIOC;
+  c.pin_d7 = CAM_D7;
+  c.pin_d6 = CAM_D6;
+  c.pin_d5 = CAM_D5;
+  c.pin_d4 = CAM_D4;
+  c.pin_d3 = CAM_D3;
+  c.pin_d2 = CAM_D2;
+  c.pin_d1 = CAM_D1;
+  c.pin_d0 = CAM_D0;
+  c.pin_vsync = CAM_VSYNC;
+  c.pin_href = CAM_HREF;
+  c.pin_pclk = CAM_PCLK;
+  c.xclk_freq_hz = 20000000;
+  c.ledc_timer = LEDC_TIMER_0;
+  c.ledc_channel = LEDC_CHANNEL_0;
+  c.pixel_format = PIXFORMAT_JPEG;
+  c.frame_size = FRAMESIZE_VGA; // 640x480 - matches the CCM's viewing budget
+  c.jpeg_quality = 12;
+  c.fb_count = 1;
+  cameraOk = esp_camera_init(&c) == ESP_OK;
+  if (!cameraOk)
+    Serial.println("camera init failed; continuing without video");
+}
+
+void streamTask(void *)
+{
+  WiFiServer server(81);
+  server.begin();
+  for (;;)
+  {
+    WiFiClient client = server.accept();
+    if (!client)
+    {
+      vTaskDelay(20);
+      continue;
+    }
+    client.print("HTTP/1.1 200 OK\r\n"
+                 "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n\r\n");
+    while (client.connected())
+    {
+      camera_fb_t *fb = esp_camera_fb_get();
+      if (!fb)
+        break;
+      client.printf("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", fb->len);
+      client.write(fb->buf, fb->len);
+      client.print("\r\n");
+      esp_camera_fb_return(fb);
+      vTaskDelay(100); // ~10 fps
+    }
+    client.stop();
+  }
+}
+
+void maybeStartStream()
+{
+  if (!cameraOk || streamStarted || WiFi.status() != WL_CONNECTED)
+    return;
+  streamStarted = true;
+  Serial.printf("camera stream: http://%s:81/stream\n", WiFi.localIP().toString().c_str());
+  xTaskCreatePinnedToCore(streamTask, "stream", 4096, nullptr, 1, nullptr, 0);
+}
+#endif
+
 // ---- command handling -------------------------------------------------------------------------
 void handleCommand(const uint8_t *data, size_t len)
 {
@@ -543,6 +645,39 @@ void handleCommand(const uint8_t *data, size_t len)
         schedule[i].grams = MAX_PORTION_G; // clamp, never trust the sender
     }
     saveSchedule();
+    sendAck(seq, 0);
+    break;
+  }
+
+  case MsgType::CMD_SET_WIFI:
+  {
+    if (bodyLen < 2)
+    {
+      sendNack(seq, 0, ErrorCode::BadPayload);
+      break;
+    }
+    uint8_t slen = body[0];
+    if (bodyLen < (size_t)(2 + slen))
+    {
+      sendNack(seq, 0, ErrorCode::BadPayload);
+      break;
+    }
+    uint8_t plen = body[1 + slen];
+    if (bodyLen != (size_t)(2 + slen + plen) || slen == 0 || slen > 32 || plen > 63)
+    {
+      sendNack(seq, 0, ErrorCode::BadPayload);
+      break;
+    }
+    char ssid[33], pass[64];
+    memcpy(ssid, body + 1, slen);
+    ssid[slen] = 0;
+    memcpy(pass, body + 2 + slen, plen);
+    pass[plen] = 0;
+    prefs.putString("wifi_ssid", ssid);
+    prefs.putString("wifi_pass", pass);
+    wifiSsid = ssid;
+    wifiPass = pass;
+    wifiConnect();
     sendAck(seq, 0);
     break;
   }
@@ -679,6 +814,13 @@ void setup()
   scale.tare();
 #endif
 
+  wifiSsid = prefs.getString("wifi_ssid", "");
+  wifiPass = prefs.getString("wifi_pass", "");
+  wifiConnect(); // no-op if never provisioned
+#ifdef FEEDER_CAMERA
+  cameraInit();
+#endif
+
   setupBle();
   Serial.println("foodi-feeder up, advertising");
 }
@@ -689,6 +831,9 @@ void loop()
   updateDispense();
   checkSchedule();
   handleSerial();
+#ifdef FEEDER_CAMERA
+  maybeStartStream();
+#endif
 
   if (ccmConnected)
   {

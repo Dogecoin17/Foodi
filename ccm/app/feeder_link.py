@@ -136,16 +136,18 @@ class FakeFeeder(FeederLink):
 
 
 class BleFeeder(FeederLink):
-    """Real feeder over BLE: reconnect with backoff; SYNC_TIME + SET_SCHEDULE on every connect."""
+    """Real feeder over BLE: reconnect with backoff; SYNC_TIME + SET_SCHEDULE
+    (+ SET_WIFI when configured) on every connect."""
 
     SERVICE = "f00d0000-0000-4000-8000-00805f9b34fb"
     COMMAND = "f00d0001-0000-4000-8000-00805f9b34fb"
     EVENT = "f00d0002-0000-4000-8000-00805f9b34fb"
     TELEMETRY = "f00d0003-0000-4000-8000-00805f9b34fb"
 
-    def __init__(self, address: str) -> None:
+    def __init__(self, address: str, wifi_creds: tuple[str, str] | None = None) -> None:
         super().__init__()
         self.address = address
+        self._wifi_creds = wifi_creds
         self._client = None
         self._seq = 0
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -184,6 +186,8 @@ class BleFeeder(FeederLink):
                 await self._write(P.encode_sync_time(self._next_seq(), int(time.time()), tz_min))
                 if self._schedule:
                     await self._write(P.encode_set_schedule(self._next_seq(), self._schedule))
+                if self._wifi_creds:
+                    await self._write(P.encode_set_wifi(self._next_seq(), *self._wifi_creds))
                 return  # reconnects re-run _run() via _on_disconnect
             except Exception:
                 self.connected = False
@@ -231,7 +235,7 @@ class BleFeeder(FeederLink):
         await self._write(P.encode_tare(self._next_seq()))
 
 
-def make_feeder(mode: str, ble_address: str = "") -> FeederLink:
+def make_feeder(mode: str, ble_address: str = "", wifi_creds: tuple[str, str] | None = None) -> FeederLink:
     if mode == "ble":
-        return BleFeeder(ble_address)
+        return BleFeeder(ble_address, wifi_creds)
     return FakeFeeder()
