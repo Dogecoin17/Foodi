@@ -195,7 +195,11 @@ def health():
 
 @app.get("/api/status")
 def status():
-    video_mode = "live" if state.video else ("clip" if Path(settings.video_clip).is_file() else "none")
+    video_mode = (
+        "live"
+        if state.video
+        else ("clip" if Path(settings.video_clip).is_file() else "none")
+    )
     out = {
         "connected": bool(state.feeder and state.feeder.connected),
         "mode": settings.feeder_mode,
@@ -293,7 +297,9 @@ def video():
     """Live MJPEG from the feeder camera (phone in the prototype) with the AI
     overlay, or the pre-recorded clip when no live source is configured."""
     if state.video:
-        return StreamingResponse(_mjpeg_stream(), media_type="multipart/x-mixed-replace; boundary=frame")
+        return StreamingResponse(
+            _mjpeg_stream(), media_type="multipart/x-mixed-replace; boundary=frame"
+        )
     clip = Path(settings.video_clip)
     if clip.is_file():
         return FileResponse(clip, media_type="video/mp4")
